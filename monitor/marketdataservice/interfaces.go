@@ -24,7 +24,7 @@ type Download func(url string) (ZippedReader, error)
 type Decompress func(reader ZippedReader) (UnzippedReader, error)
 type Parse func(reader UnzippedReader) ([]MarketHistoryCSVRecord, error)
 
-type MarketDataServiceInterface interface {
+type IMarketDataService interface {
 	FetchAndParseCSV(url string) ([]MarketHistoryCSVRecord, error)
 }
 
