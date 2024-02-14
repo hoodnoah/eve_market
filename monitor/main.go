@@ -2,20 +2,23 @@ package main
 
 import (
 	"fmt"
+	"log"
 
-	"github.com/hoodnoah/eve_market/monitor/timeutils"
+	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
 )
 
-const BaseUrl = "https://data.everef.net/market-history/"
-
 func main() {
-	// Get list of years from the first time data was listed to present
-	// yearsList := timeutils.EnumerateYearsToPresent(timeutils.EarliestYear)
+	const url = "https://data.everef.net/market-history/2003/market-history-2003-10-01.csv.bz2"
 
-	// Get days in 2003
-	days2003 := timeutils.EnumerateDatesInYear(2003)
+	downloadService := mds.NewMarketDataService(mds.DownloadFile, mds.DecompressFile, mds.ParseFile)
 
-	firstDay := days2003[0]
+	result, err := downloadService.FetchAndParseCSV(url)
 
-	fmt.Println(firstDay)
+	if err != nil {
+		log.Fatalf("Failed to download file at %s: %s", url, err)
+	}
+
+	randomRecord := result[1234]
+
+	fmt.Printf("%+v\n", randomRecord)
 }
