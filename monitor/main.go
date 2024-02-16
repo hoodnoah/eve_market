@@ -3,22 +3,57 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
+	dbs "github.com/hoodnoah/eve_market/monitor/dbservice"
 	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
 )
 
 func main() {
-	const url = "https://data.everef.net/market-history/2003/market-history-2003-10-01.csv.bz2"
-
-	downloadService := mds.NewMarketDataService(mds.DownloadFile, mds.DecompressFile, mds.ParseFile)
-
-	result, err := downloadService.FetchAndParseCSV(url)
-
-	if err != nil {
-		log.Fatalf("Failed to download file at %s: %s", url, err)
+	config := dbs.ConfigVars{
+		User:   "testuser",
+		Passwd: "password",
+		Net:    "tcp",
+		Addr:   "localhost:3306",
+		DBName: "dbservice_test",
 	}
 
-	randomRecord := result[1234]
+	testRecord1 := mds.MarketHistoryCSVRecord{
+		Date:       time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC),
+		RegionID:   10000001,
+		TypeID:     18,
+		Average:    10,
+		Highest:    10,
+		Lowest:     10,
+		Volume:     340,
+		OrderCount: 2,
+	}
 
-	fmt.Printf("%+v\n", randomRecord)
+	testRecord2 := mds.MarketHistoryCSVRecord{
+		Date:       time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC),
+		RegionID:   10000001,
+		TypeID:     20,
+		Average:    14,
+		Highest:    14,
+		Lowest:     14,
+		Volume:     143,
+		OrderCount: 1,
+	}
+
+	testRecords := []mds.MarketHistoryCSVRecord{testRecord1, testRecord2}
+
+	dbService, err := dbs.NewDBService(&config)
+	defer dbService.Close()
+
+	if err != nil {
+		log.Fatalf("Failed to open database: %s", err)
+	}
+
+	err = dbService.BulkAddRecord(testRecords)
+
+	if err != nil {
+		log.Fatalf("Failed to insert record: %s", err)
+	} else {
+		fmt.Println("Successfully inserted record.")
+	}
 }

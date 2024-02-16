@@ -8,8 +8,10 @@ import (
 )
 
 type IDBService interface {
-	AddRecord(record *mds.MarketHistoryCSVRecord)
+	AddRecord(record *mds.MarketHistoryCSVRecord) error
+	BulkAddRecord(records []mds.MarketHistoryCSVRecord) error
 	ExtantDates() []int
+	Close()
 }
 
 type ConfigVars struct {
@@ -21,5 +23,7 @@ type ConfigVars struct {
 }
 
 type DBService struct {
-	connection *sql.DB
+	connection      *sql.DB
+	bootstrapTables func()
+	insert          func(record *mds.MarketHistoryCSVRecord, db sql.DB) error
 }

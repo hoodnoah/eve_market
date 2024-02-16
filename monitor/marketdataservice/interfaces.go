@@ -26,6 +26,7 @@ type Parse func(reader UnzippedReader) ([]MarketHistoryCSVRecord, error)
 
 type IMarketDataService interface {
 	FetchAndParseCSV(url string) ([]MarketHistoryCSVRecord, error)
+	Close()
 }
 
 type MarketDataService struct {
