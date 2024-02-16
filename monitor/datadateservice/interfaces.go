@@ -20,4 +20,6 @@ type IDataDateService interface {
 	EnumerateDataYears(currentDate time.Time) []DataYear
 }
 
-type DataDateService struct{}
+type DataDateService struct {
+	getCurrentDate func() time.Time
+}

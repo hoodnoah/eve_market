@@ -8,10 +8,22 @@ import (
 
 const firstYearAvailable = Year(2003)
 
+// utility function for getting the current date
+func GetCurrentDate() time.Time {
+	return time.Now().UTC()
+}
+
 var earliestDate = time.Date(int(firstYearAvailable), 10, 1, 0, 0, 0, 0, time.UTC)
 
 const filePrefix = "market-history"
 const fileExt = ".csv.bz2"
+
+// constructor for the datadateservice
+func NewDataDateService(currentDatefn func() time.Time) *DataDateService {
+	return &DataDateService{
+		getCurrentDate: currentDatefn,
+	}
+}
 
 // lists the days in a given year, exluding anything before
 // October 1, 2003, the first date with EveRefs data
@@ -19,7 +31,7 @@ func enumerateDatesInYear(year Year) []DataDate {
 	if year < 2003 {
 		return nil
 	}
-	startDate := time.Date(int(year), 1, 0, 0, 0, 0, 0, time.UTC)
+	startDate := time.Date(int(year), 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(int(year)+1, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	var dates []DataDate
@@ -77,9 +89,22 @@ func createDataYear(year Year, currentDate time.Time) (DataYear, error) {
 	}, nil
 }
 
+func filterDatesBefore(dates []DataDate, currentDate time.Time) []DataDate {
+	var filteredDates []DataDate
+
+	for _, date := range dates {
+		if date.Date.Before(currentDate.AddDate(0, 0, 1)) {
+			filteredDates = append(filteredDates, date)
+		}
+	}
+
+	return filteredDates
+}
+
 // generates a complete list of dates between the provided date
 // and the earliest date with data
-func (d *DataDateService) EnumerateDataYears(currentDate time.Time) []DataYear {
+func (d *DataDateService) EnumerateDataYears() []DataYear {
+	currentDate := d.getCurrentDate()
 	numYears := currentDate.Year() - earliestDate.Year() + 1
 
 	var dataYears []DataYear
@@ -87,9 +112,10 @@ func (d *DataDateService) EnumerateDataYears(currentDate time.Time) []DataYear {
 	for i := range numYears {
 		currentYear := Year(earliestDate.Year() + i)
 		dates := enumerateDatesInYear(currentYear)
+		filteredDates := filterDatesBefore(dates, currentDate)
 		dataYear := DataYear{
 			Year:  currentYear,
-			Dates: dates,
+			Dates: filteredDates,
 		}
 		dataYears = append(dataYears, dataYear)
 	}
