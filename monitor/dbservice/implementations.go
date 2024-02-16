@@ -27,18 +27,19 @@ const CREATE_MARKET_DATA_TABLE_QUERY = `
 	);
 `
 
-const INSERT_QUERY_TEMPLATE = `
-	INSERT INTO
-	market_data
-	(date, region_id, type_id, average, highest, lowest, volume, order_count)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	ON DUPLICATE KEY UPDATE date=date; // intentional no-op; id gets set to its current value
+const CREATE_DATES_RECORDED_TABLE_QUERY = `
+	CREATE TABLE
+	IF NOT EXISTS
+	dates_recorded (
+		date DATE NOT NULL,
+
+		PRIMARY KEY(date)
+	);
 `
 
-// bootstraps the market_data table
-func ensureMarketDataTableExists(db *sql.DB) error {
-	statement, err := db.Prepare(CREATE_MARKET_DATA_TABLE_QUERY)
-
+// executes a query to create a table
+func executeTableCreationQuery(query string, db *sql.DB) error {
+	statement, err := db.Prepare(query)
 	if err != nil {
 		return err
 	}
@@ -46,8 +47,23 @@ func ensureMarketDataTableExists(db *sql.DB) error {
 
 	_, err = statement.Exec()
 
-	if err != nil {
-		return err
+	return err
+}
+
+// creates tables:
+//   - market_data
+//   - dates_recorded
+func bootstrapTables(db *sql.DB) error {
+	tables := []string{
+		CREATE_MARKET_DATA_TABLE_QUERY,
+		CREATE_DATES_RECORDED_TABLE_QUERY,
+	}
+
+	for _, query := range tables {
+		err := executeTableCreationQuery(query, db)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -55,7 +71,15 @@ func ensureMarketDataTableExists(db *sql.DB) error {
 
 // given a record and a db, inserts the record
 func insertMarketDataRecord(record *mds.MarketHistoryCSVRecord, db *sql.DB) error {
-	statement, err := db.Prepare(INSERT_QUERY_TEMPLATE)
+	template := `
+		INSERT INTO
+		market_data
+		(date, region_id, type_id, average, highest, lowest, volume, order_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE date=date; // intentional no-op; id gets set to its current value
+`
+
+	statement, err := db.Prepare(template)
 
 	if err != nil {
 		return err
@@ -108,8 +132,9 @@ func insertMarketDataRecords(records []mds.MarketHistoryCSVRecord, db *sql.DB) e
 	if err != nil {
 		return err
 	}
+	defer tpl.Close()
 
-	_, err = tpl.Exec(valuesArgs...)
+	_, err = tpl.Exec(valuesArgs...) // unpack values to correspond with '?' placeholders in query string
 
 	return err
 }
@@ -142,11 +167,10 @@ func NewDBService(config *ConfigVars) (*DBService, error) {
 	db.SetMaxIdleConns(10)
 
 	// bootstrap tables, etc.
-	err = ensureMarketDataTableExists(db)
+	err = bootstrapTables(db)
 	if err != nil {
 		return nil, err
 	}
-
 	return &DBService{
 		connection: db,
 	}, nil
