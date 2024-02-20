@@ -32,6 +32,18 @@ var completedDatesTableTemplate = `
 	);
 `
 
+var insertRecordTemplate = `
+	INSERT INTO market_data (date, region_id, type_id, average, highest, lowest, volume, order_count)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	ON DUPLICATE KEY UPDATE date=date;
+`
+
+var insertManyTemplate = `
+	INSERT INTO market_data (date, region_id, type_id, average, highest, lowest, volume, order_count)
+	VALUES (%s)
+	ON DUPLICATE KEY UPDATE date=date;
+`
+
 // TYPES
 type MySqlConfig struct {
 	User   string
@@ -47,7 +59,21 @@ type MySqlDBService struct {
 
 // adds a single record to the database
 func (service *MySqlDBService) InsertOne(record *mds.MarketHistoryCSVRecord) error {
-	return errors.New("InsertOne not implemented")
+	statement, err := service.connection.Prepare(insertRecordTemplate)
+	if err != nil {
+		return err
+	}
+	_, err = statement.Exec(
+		record.Date,
+		record.RegionID,
+		record.TypeID,
+		record.Average,
+		record.Highest,
+		record.Lowest,
+		record.Volume,
+		record.OrderCount,
+	)
+	return err
 }
 func (service *MySqlDBService) InsertMany(records []mds.MarketHistoryCSVRecord) error {
 	return errors.New("InsertMany not implemented")

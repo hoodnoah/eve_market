@@ -6,14 +6,14 @@ import (
 )
 
 type MarketHistoryCSVRecord struct {
-	Date       time.Time
-	RegionID   uint
-	TypeID     uint
-	Average    float64
-	Highest    float64
-	Lowest     float64
-	Volume     uint
-	OrderCount uint
+	Date       time.Time `db:"date"`
+	RegionID   uint      `db:"region_id"`
+	TypeID     uint      `db:"type_id"`
+	Average    float64   `db:"average"`
+	Highest    float64   `db:"highest"`
+	Lowest     float64   `db:"lowest"`
+	Volume     uint      `db:"volume"`
+	OrderCount uint      `db:"order_count"`
 }
 
 // semantic wrappers for explicit format safety
