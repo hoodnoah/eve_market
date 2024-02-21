@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	dbs "github.com/hoodnoah/eve_market/monitor/dbservice"
+	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
 )
 
 var MySqlConfig mysql.Config = mysql.Config{
@@ -81,4 +82,26 @@ func Setup() (TestSetup, error) {
 		DBService:  &dbService,
 		TearDown:   tearDown,
 	}, nil
+}
+
+type Scannable interface {
+	Scan(dest ...any) error
+}
+
+// scans a row into a record
+func ScanRowToRecord[T Scannable](row T) (*mds.MarketHistoryCSVRecord, error) {
+	resultRecord := mds.MarketHistoryCSVRecord{}
+	if err := row.Scan(
+		&resultRecord.Date,
+		&resultRecord.RegionID,
+		&resultRecord.TypeID,
+		&resultRecord.Average,
+		&resultRecord.Highest,
+		&resultRecord.Lowest,
+		&resultRecord.Volume,
+		&resultRecord.OrderCount,
+	); err != nil {
+		return nil, err
+	}
+	return &resultRecord, nil
 }

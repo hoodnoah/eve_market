@@ -6,20 +6,19 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	db "github.com/hoodnoah/eve_market/monitor/dbservice"
 	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
 )
 
 func TestInsertOne(t *testing.T) {
 	// configure connection to the test db
 	config := MySqlConfig
-
-	// initialize the service, which will create the tables
-	dbservice, err := db.NewMySqlDBService(&config)
+	setup, err := Setup()
 	if err != nil {
-		t.Fatalf("Failed to create MySqlDBService: %v", err)
+		t.Fatalf("Failed to setup test suite: %v", err)
 	}
-	defer dbservice.Close()
+	defer setup.TearDown()
+
+	dbservice := *setup.DBService
 
 	testRecord := mds.MarketHistoryCSVRecord{
 		Date:       time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC),

@@ -3,6 +3,8 @@ package dbservice
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
@@ -13,14 +15,14 @@ import (
 // CONSTANTS
 var marketDataTableTemplate = `
 	CREATE TABLE IF NOT EXISTS market_data (
-		date DATE,
-		region_id INTEGER,
-		type_id INTEGER,
-		average DECIMAL(10, 2),
-		highest DECIMAL(10, 2),
-		lowest DECIMAL(10, 2),
-		volume INTEGER,
-		order_count INTEGER,
+		date DATE NOT NULL,
+		region_id INTEGER UNSIGNED NOT NULL,
+		type_id INTEGER UNSIGNED NOT NULL,
+		average DECIMAL(20, 2) NOT NULL,
+		highest DECIMAL(20, 2) NOT NULL,
+		lowest DECIMAL(20, 2) NOT NULL,
+		volume INTEGER UNSIGNED NOT NULL,
+		order_count INTEGER UNSIGNED NOT NULL,
 
 		PRIMARY KEY(date, region_id, type_id)
 	);
@@ -39,10 +41,14 @@ var insertRecordTemplate = `
 `
 
 var insertManyTemplate = `
-	INSERT INTO market_data (date, region_id, type_id, average, highest, lowest, volume, order_count)
-	VALUES (%s)
+	INSERT INTO market_data
+		(date, region_id, type_id, average, highest, lowest, volume, order_count)
+	VALUES
+		%s
 	ON DUPLICATE KEY UPDATE date=date;
 `
+
+const MAXCHUNKSIZE = 2000
 
 // TYPES
 type MySqlConfig struct {
@@ -75,8 +81,65 @@ func (service *MySqlDBService) InsertOne(record *mds.MarketHistoryCSVRecord) err
 	)
 	return err
 }
+
+// chunk a slice into slices of at most size n, where
+// n is the provided chunkSize
+func chunkSlice[T any](slice []T, chunkSize int) [][]T {
+	returnValue := make([][]T, 0, 0)
+	if len(slice) <= chunkSize {
+		return append(returnValue, slice)
+	}
+
+	idx := 0
+	for idx < len(slice) {
+		high := idx + min(chunkSize, len(slice)-idx)
+		returnValue = append(returnValue, slice[idx:high])
+		idx = high
+	}
+
+	return returnValue
+}
+
+func prepQueryForChunk(chunk []mds.MarketHistoryCSVRecord) struct {
+	Query string
+	Args  []interface{}
+} {
+	numRecords := len(chunk)
+	placeholders := make([]string, 0, numRecords)
+	args := make([]interface{}, 0, numRecords*8)
+	for _, record := range chunk {
+		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?, ?, ?)")
+		args = append(args, record.Date, record.RegionID, record.TypeID, record.Average, record.Highest, record.Lowest, record.Volume, record.OrderCount)
+	}
+
+	return struct {
+		Query string
+		Args  []interface{}
+	}{
+		Query: fmt.Sprintf(insertManyTemplate, strings.Join(placeholders, ", ")),
+		Args:  args,
+	}
+}
+
+// Insert several records at once
 func (service *MySqlDBService) InsertMany(records []mds.MarketHistoryCSVRecord) error {
-	return errors.New("InsertMany not implemented")
+	chunkedRecords := chunkSlice[mds.MarketHistoryCSVRecord](records, MAXCHUNKSIZE)
+
+	tx, err := service.connection.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, chunk := range chunkedRecords {
+		res := prepQueryForChunk(chunk)
+		_, err := tx.Exec(res.Query, res.Args...)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 func (service *MySqlDBService) QueryOne(string) (*mds.MarketHistoryCSVRecord, error) {
 	return nil, errors.New("QueryOne not implemented")

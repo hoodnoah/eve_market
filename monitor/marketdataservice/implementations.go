@@ -3,10 +3,10 @@ package marketdataservice
 import (
 	"compress/bzip2"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -52,71 +52,78 @@ func parseFloat(floatStr string) (float64, error) {
 	return result, nil
 }
 
-// Determines if a slice contains the correct header field names
-func isCorrectHeaderRow(record []string) bool {
-	if len(record) != 8 {
-		return false
+func linearSearch(list []string, target string) int {
+	for i, elem := range list {
+		if strings.ToLower(elem) == strings.ToLower(target) {
+			return i
+		}
 	}
-	for i, val := range record {
-		if val != fieldNames[i] {
-			return false
+	return -1
+}
+
+func findColumnIndices(headerRecord []string) (map[string]int, error) {
+	if len(headerRecord) < 8 {
+		return nil, fmt.Errorf("header row too short; expected 8 columns minimum, received %d", len(headerRecord))
+	}
+
+	columnIndices := make(map[string]int)
+	for _, columnHeader := range fieldNames {
+		index := linearSearch(headerRecord, columnHeader)
+		if index < 0 {
+			return nil, fmt.Errorf("header row missing required field %s", columnHeader)
+		}
+		if index > 0 {
+			columnIndices[columnHeader] = index
 		}
 	}
 
-	return true
+	return columnIndices, nil
 }
 
-func parseRecord(record []string) (*MarketHistoryCSVRecord, error) {
-	// expect date, region_id, type_id, average, highest, lowest, volume, order_count
-	if len(record) != 8 {
-		return nil, fmt.Errorf("expected 8 fields, received %d", len(record))
-	}
-
-	var err error
-
-	parsedDate, err := parseDate(record[0])
+func parseRecord(columnIndices map[string]int, record []string) (*MarketHistoryCSVRecord, error) {
+	parsedDate, err := parseDate(record[columnIndices["date"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedRegionID, err := parseUint(record[1])
+	parsedRegionID, err := parseUint(record[columnIndices["region_id"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedTypeID, err := parseUint(record[2])
+	parsedTypeID, err := parseUint(record[columnIndices["type_id"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedAverage, err := parseFloat(record[3])
+	parsedAverage, err := parseFloat(record[columnIndices["average"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedHighest, err := parseFloat(record[4])
+	parsedHighest, err := parseFloat(record[columnIndices["highest"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedLowest, err := parseFloat(record[5])
+	parsedLowest, err := parseFloat(record[columnIndices["lowest"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedVolume, err := parseUint(record[6])
+	parsedVolume, err := parseUint(record[columnIndices["volume"]])
 
 	if err != nil {
 		return nil, err
 	}
 
-	parsedOrderCount, err := parseUint(record[7])
+	parsedOrderCount, err := parseUint(record[columnIndices["order_count"]])
 
 	if err != nil {
 		return nil, err
@@ -175,14 +182,15 @@ func ParseFile(unzippedFile UnzippedReader) ([]MarketHistoryCSVRecord, error) {
 		return nil, err
 	}
 
-	if !isCorrectHeaderRow(records[0]) {
-		return nil, errors.New("received malformed header row")
+	columnIndices, err := findColumnIndices(records[0])
+	if err != nil {
+		return nil, err
 	}
 
 	var returnRecords []MarketHistoryCSVRecord
 
 	for _, val := range records[1:] {
-		parseResult, err := parseRecord(val)
+		parseResult, err := parseRecord(columnIndices, val)
 		if err != nil {
 			return nil, err
 		}
