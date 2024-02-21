@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	db "github.com/hoodnoah/eve_market/monitor/dbservice"
 	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
@@ -13,15 +12,7 @@ import (
 
 func TestInsertOne(t *testing.T) {
 	// configure connection to the test db
-	config := mysql.Config{
-		User:                 "testuser",
-		Passwd:               "password",
-		Net:                  "tcp",
-		Addr:                 "localhost:3306",
-		DBName:               "dbservice_test",
-		AllowNativePasswords: true,
-		ParseTime:            true,
-	}
+	config := MySqlConfig
 
 	// initialize the service, which will create the tables
 	dbservice, err := db.NewMySqlDBService(&config)
