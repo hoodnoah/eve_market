@@ -101,9 +101,13 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 }
 
 func setup(filePath string) struct {
-	Service IMarketDataService
+	Service     IMarketDataService
+	DownloadArg *string
 } {
+	dlArg := new(string)
+
 	mockDownload := func(s string) (ZippedReader, error) {
+		*dlArg = s
 		file, err := os.ReadFile(filePath)
 		if err != nil {
 			return nil, err
@@ -112,9 +116,11 @@ func setup(filePath string) struct {
 	}
 
 	return struct {
-		Service IMarketDataService
+		Service     IMarketDataService
+		DownloadArg *string
 	}{
-		Service: NewMarketDataService(mockDownload, DecompressFile, ParseFile),
+		Service:     NewMarketDataService(mockDownload, DecompressFile, ParseFile),
+		DownloadArg: dlArg,
 	}
 }
 
@@ -124,10 +130,15 @@ func TestMarketDataService_FetchAndParseCSV(t *testing.T) {
 		service := fixture.Service
 
 		testDate := time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC)
+		expectedURL := "https://data.everef.net/market-history/2003/market-history-2003-10-01.csv.bz2"
 
 		day, err := service.FetchAndParseDay(testDate)
 		if err != nil {
 			t.Fatalf("FetchAndParseDay returned an error: %v", err)
+		}
+
+		if (*fixture.DownloadArg) != expectedURL {
+			t.Fatalf("Passed incorrect url to download function\n\nExpected:\n%s\n\nReveived:\n%s", expectedURL, *fixture.DownloadArg)
 		}
 
 		if !day.Date.Equal(testDate) {
@@ -143,11 +154,16 @@ func TestMarketDataService_FetchAndParseCSV(t *testing.T) {
 		fixture := setup(file2024)
 
 		testDate := time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC)
+		expectedURL := "https://data.everef.net/market-history/2024/market-history-2024-02-10.csv.bz2"
 		expectedNumRecords := 52484
 
 		day, err := fixture.Service.FetchAndParseDay(testDate)
 		if err != nil {
 			t.Fatalf("FetchAndParseDay returned an error: %v", err)
+		}
+
+		if *fixture.DownloadArg != expectedURL {
+			t.Fatalf("Passed incorrect url to download function\n\nExpected:\n%s\n\nReveived:\n%s", expectedURL, *fixture.DownloadArg)
 		}
 
 		if !day.Date.Equal(testDate) {

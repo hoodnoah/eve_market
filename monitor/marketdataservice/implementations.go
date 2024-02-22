@@ -21,7 +21,7 @@ var fieldNames = [8]string{
 	"order_count",
 }
 
-const urlTemplate = "https://data.everef.net/market-history/%d/market-history-%d-%d-%d.csv.bz2"
+const urlTemplate = "https://data.everef.net/market-history/%04d/market-history-%04d-%02d-%02d.csv.bz2"
 
 // compile-time interface check
 var _ IMarketDataService = (*MarketDataService)(nil)
