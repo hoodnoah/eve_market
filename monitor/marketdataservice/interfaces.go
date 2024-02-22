@@ -16,6 +16,11 @@ type MarketHistoryCSVRecord struct {
 	OrderCount uint      `db:"order_count"`
 }
 
+type MarketDay struct {
+	Date    time.Time
+	Records []MarketHistoryCSVRecord
+}
+
 // semantic wrappers for explicit format safety
 type ZippedReader io.Reader
 type UnzippedReader io.Reader
@@ -25,8 +30,7 @@ type Decompress func(reader ZippedReader) (UnzippedReader, error)
 type Parse func(reader UnzippedReader) ([]MarketHistoryCSVRecord, error)
 
 type IMarketDataService interface {
-	FetchAndParseCSV(url string) ([]MarketHistoryCSVRecord, error)
-	Close()
+	FetchAndParseDay(day time.Time) (*MarketDay, error)
 }
 
 type MarketDataService struct {

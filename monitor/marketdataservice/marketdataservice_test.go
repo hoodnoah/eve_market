@@ -44,7 +44,8 @@ func slicesEqual(s1 []MarketHistoryCSVRecord, s2 []MarketHistoryCSVRecord, comp 
 	return true
 }
 
-const ZIPPED_CSV_PATH = "./testdata/marketdataservice/compressed.csv.bz2"
+const file2003 = "./testdata/marketdataservice/market-history-2003-10-01.csv.bz2"
+const file2024 = "./testdata/marketdataservice/market-history-2024-02-10.csv.bz2"
 
 var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 	MarketHistoryCSVRecord{
@@ -99,26 +100,62 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 	},
 }
 
-// simulates the downloading of a bzipped csv file
-// by reading in a test fixture
-func mockDownload(_ string) (ZippedReader, error) {
-	file, err := os.ReadFile(ZIPPED_CSV_PATH)
-	if err != nil {
-		return nil, err
+func setup(filePath string) struct {
+	Service IMarketDataService
+} {
+	mockDownload := func(s string) (ZippedReader, error) {
+		file, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, err
+		}
+		return bytes.NewReader(file), nil
 	}
 
-	return bytes.NewReader(file), nil
+	return struct {
+		Service IMarketDataService
+	}{
+		Service: NewMarketDataService(mockDownload, DecompressFile, ParseFile),
+	}
 }
 
 func TestMarketDataService_FetchAndParseCSV(t *testing.T) {
-	service := NewMarketDataService(mockDownload, DecompressFile, ParseFile)
+	t.Run("reads truncated 2003 file correctly", func(t *testing.T) {
+		fixture := setup(file2003)
+		service := fixture.Service
 
-	records, err := service.FetchAndParseCSV("website.ext/file.ext")
-	if err != nil {
-		t.Fatalf("FetchAndParseCSV returned an error: %v", err)
-	}
+		testDate := time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC)
 
-	if !slicesEqual(records, EXPECTED_RECORDS, recordEqual) {
-		t.Fatalf("Expected:\n%v\nReceived:\n%v", EXPECTED_RECORDS, records)
-	}
+		day, err := service.FetchAndParseDay(testDate)
+		if err != nil {
+			t.Fatalf("FetchAndParseDay returned an error: %v", err)
+		}
+
+		if !day.Date.Equal(testDate) {
+			t.Fatalf("Returned incorrect date. Expected %s, received %s", testDate.String(), day.Date.String())
+		}
+
+		if !slicesEqual(day.Records, EXPECTED_RECORDS, recordEqual) {
+			t.Fatalf("Expected:\n%v\nReceived:\n%v", EXPECTED_RECORDS, day.Records)
+		}
+	})
+
+	t.Run("reads full 2024 file correctly", func(t *testing.T) {
+		fixture := setup(file2024)
+
+		testDate := time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC)
+		expectedNumRecords := 52484
+
+		day, err := fixture.Service.FetchAndParseDay(testDate)
+		if err != nil {
+			t.Fatalf("FetchAndParseDay returned an error: %v", err)
+		}
+
+		if !day.Date.Equal(testDate) {
+			t.Fatalf("Returned incorrect date. Expected %s, received %s", testDate.String(), day.Date.String())
+		}
+
+		if len(day.Records) != expectedNumRecords {
+			t.Fatalf("Expected to receive %d records, received %d", expectedNumRecords, len(day.Records))
+		}
+	})
 }

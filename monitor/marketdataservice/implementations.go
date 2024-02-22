@@ -21,6 +21,11 @@ var fieldNames = [8]string{
 	"order_count",
 }
 
+const urlTemplate = "https://data.everef.net/market-history/%d/market-history-%d-%d-%d.csv.bz2"
+
+// compile-time interface check
+var _ IMarketDataService = (*MarketDataService)(nil)
+
 // parses a date of format yyyy-mm-dd into a time
 func parseDate(dateStr string) (time.Time, error) {
 	date, err := time.Parse(time.DateOnly, dateStr)
@@ -200,10 +205,22 @@ func ParseFile(unzippedFile UnzippedReader) ([]MarketHistoryCSVRecord, error) {
 	return returnRecords, nil
 }
 
+// converts a date to its url stub
+// e.g. "2003-10-01" -> ".../2003/market-history-2003-10-01.csv.bz2"
+func dateToURL(date time.Time) string {
+	return fmt.Sprintf(
+		urlTemplate,
+		date.Year(),
+		date.Year(),
+		date.Month(),
+		date.Day(),
+	)
+}
+
 // Fetches (by URL) and parses a MarketHistoryCSV file into its constituent records
-func (m *MarketDataService) FetchAndParseCSV(url string) ([]MarketHistoryCSVRecord, error) {
+func (m *MarketDataService) FetchAndParseDay(day time.Time) (*MarketDay, error) {
 	// Download
-	bzippedData, err := m.download(url)
+	bzippedData, err := m.download(dateToURL(day))
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +237,10 @@ func (m *MarketDataService) FetchAndParseCSV(url string) ([]MarketHistoryCSVReco
 		return nil, err
 	}
 
-	return records, nil
+	return &MarketDay{
+		Date:    day,
+		Records: records,
+	}, nil
 }
 
 // compares the current MarketDataCSVRecord with a provided one
