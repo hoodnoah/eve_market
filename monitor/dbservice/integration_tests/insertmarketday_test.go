@@ -1,6 +1,8 @@
 package integration_tests
 
 import (
+	"bytes"
+	"os"
 	"testing"
 	"time"
 
@@ -14,7 +16,7 @@ func TestInsertMarketDay(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to get test setup: %v", err)
 		}
-		// defer testSetup.TearDown()
+		defer testSetup.TearDown()
 
 		testRecords := []mds.MarketHistoryCSVRecord{
 			{
@@ -113,5 +115,54 @@ func TestInsertMarketDay(t *testing.T) {
 			t.Fatalf("expected 1 record in completed_dates, received %d", numRecords)
 		}
 
+	})
+
+	t.Run("it should insert the sample file from 2024-02-10", func(t *testing.T) {
+		// arrange
+		testSetup, err := Setup()
+		if err != nil {
+			t.Fatalf("failed to get test setup: %v", err)
+		}
+		// defer testSetup.TearDown()
+
+		mockDownloadFn := func(_ string) (mds.ZippedReader, error) {
+			file, err := os.ReadFile("../testdata/exports/market-history-2024-02-10.csv.bz2")
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(file), nil
+		}
+
+		dataSvc := mds.NewMarketDataService(mockDownloadFn, mds.DecompressFile, mds.ParseFile)
+		day, err := dataSvc.FetchAndParseDay(time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC))
+		if err != nil {
+			t.Fatalf("failed to parse the file: %v", err)
+		}
+
+		// act
+		_, err = testSetup.DBManager.InsertMarketDay(day)
+		if err != nil {
+			t.Fatalf("Failed to insert day: %v", err)
+		}
+
+		// assert
+		// should only insert 1 day into completed_dates
+		var numDates uint
+		if err = testSetup.Connection.QueryRow("SELECT COUNT(id) FROM completed_dates;").Scan(&numDates); err != nil {
+			t.Fatalf("failed to retrieve row count: %v", err)
+		}
+		if numDates != 1 {
+			t.Fatalf("Expected 1 date, counted %d", numDates)
+		}
+
+		// should insert the full 52,484 records
+		var numRecords uint
+		if err = testSetup.Connection.QueryRow("SELECT COUNT(date_id) FROM market_data").Scan(&numRecords); err != nil {
+			t.Fatalf("failed to retrieve row count from market_data: %v", numRecords)
+		}
+
+		if numRecords != 52484 {
+			t.Fatalf("Expoected 52484 records, received %d", numRecords)
+		}
 	})
 }
