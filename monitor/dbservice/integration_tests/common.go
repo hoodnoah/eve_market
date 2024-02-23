@@ -1,7 +1,6 @@
 package integration_tests
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -21,26 +20,25 @@ var MySqlConfig mysql.Config = mysql.Config{
 	ParseTime:            true,
 }
 
-const ClearTablesQuery = `
-	TRUNCATE TABLE market_data;
-	TRUNCATE TABLE completed_dates;
-`
-
-func clearTables(context context.Context, conn *sql.DB) error {
-	tx, err := conn.BeginTx(context, nil)
+func clearTables(conn *sql.DB) error {
+	tx, err := conn.Begin()
 	if err != nil {
 		return fmt.Errorf("Transaction failed: %v", err)
 	}
 	defer tx.Rollback()
 
 	tables := []string{
-		"market_data",
 		"completed_dates",
+		"market_data",
 	}
 	for _, table := range tables {
-		_, err := tx.ExecContext(context, "TRUNCATE TABLE "+table+";")
+		_, err := tx.Exec("DELETE FROM " + table + ";")
 		if err != nil {
 			return fmt.Errorf("Failed to create truncate query for table %s: %v", table, err)
+		}
+		_, err = tx.Exec("ALTER TABLE " + table + " AUTO_INCREMENT=1;")
+		if err != nil {
+			return fmt.Errorf("Failed to reset auto increment: %v", err)
 		}
 	}
 
@@ -53,33 +51,32 @@ func clearTables(context context.Context, conn *sql.DB) error {
 
 type TestSetup struct {
 	Connection *sql.DB
-	DBService  *dbs.IDBService
+	DBManager  *dbs.DBManager
 	TearDown   func()
 }
 
-func Setup() (TestSetup, error) {
+func Setup() (*TestSetup, error) {
 	connection, err := sql.Open("mysql", MySqlConfig.FormatDSN())
 	if err != nil {
-		return TestSetup{}, err
+		return nil, err
 	}
 
-	dbService, err := dbs.NewMySqlDBService(&MySqlConfig)
+	dbManager, err := dbs.NewDBManager(&MySqlConfig)
 	if err != nil {
-		return TestSetup{}, err
+		return nil, err
 	}
 
 	tearDown := func() {
-		context := context.Background()
-		if err := clearTables(context, connection); err != nil {
+		if err := clearTables(connection); err != nil {
 			log.Fatalf("Failed to clear tables: %v", err)
 		}
 		connection.Close()
-		dbService.Close()
+		dbManager.Close()
 	}
 
-	return TestSetup{
+	return &TestSetup{
 		Connection: connection,
-		DBService:  &dbService,
+		DBManager:  dbManager,
 		TearDown:   tearDown,
 	}, nil
 }
