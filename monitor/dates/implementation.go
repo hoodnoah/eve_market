@@ -35,7 +35,7 @@ func (di *DateIterator) IsNextReady() bool {
 	return cutoffDate.After(di.currentDate)
 }
 
-// tautology; it's an infinite
+// tautology; it's an infinite sequence
 func (di *DateIterator) HasNext() bool {
 	return true
 }

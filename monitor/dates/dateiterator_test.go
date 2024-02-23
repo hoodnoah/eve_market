@@ -48,4 +48,43 @@ func TestDateIterator(t *testing.T) {
 			t.Fatalf("Expected 0 date ready, received %d", len(datesList))
 		}
 	})
+
+	t.Run("it should produce 92 dates, when nowFn says it's 2004-01-01", func(t *testing.T) {
+		firstDate := time.Date(2004, 1, 1, 0, 0, 0, 0, time.UTC)
+		dateIterator := setup(firstDate)
+
+		datesList := make([]time.Time, 0, 92)
+		for dateIterator.IsNextReady() {
+			datesList = append(datesList, dateIterator.Next())
+		}
+
+		// should contain the right number of days
+		if len(datesList) != 92 {
+			t.Fatalf("Expected 92 days, received %d", len(datesList))
+		}
+
+		// first date should be 2003-10-01
+		if !datesList[0].Equal(time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("Expected first date to be 2003-10-01, received %s", datesList[0].String())
+		}
+
+		// last date should be 2003-12-31
+		if !datesList[len(datesList)-1].Equal(time.Date(2003, 12, 31, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("Expected last date to be 2003-12-31, received %s", datesList[len(datesList)-1].String())
+		}
+	})
+
+	t.Run("it should produce no dates if the date function returns a date before 2003-10-01", func(t *testing.T) {
+		firstDate := time.Date(2003, 1, 12, 0, 0, 0, 0, time.UTC)
+		dateIterator := *setup(firstDate)
+
+		datesList := make([]time.Time, 0)
+		for dateIterator.IsNextReady() {
+			datesList = append(datesList, dateIterator.Next())
+		}
+
+		if len(datesList) != 0 {
+			t.Fatalf("Expected 0 dates returned, received %d", len(datesList))
+		}
+	})
 }
