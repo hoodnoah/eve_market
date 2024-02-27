@@ -2,16 +2,23 @@ package dbservice
 
 import (
 	"database/sql"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 
+	"github.com/hoodnoah/eve_market/monitor/logger"
 	"github.com/hoodnoah/eve_market/monitor/parser"
 )
 
 // constructor for
-func NewDBManager(config *mysql.Config) (*DBManager, error) {
+func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan *parser.MarketDay, outputChannel chan time.Time, numWorkers uint) (*DBManager, error) {
+	if logger == nil {
+		panic("Could not initialize a new DBManager; logger must not be nil")
+	}
+
 	// instantiate db conn
 	conn, err := sql.Open("mysql", config.FormatDSN())
 	if err != nil {
@@ -25,6 +32,11 @@ func NewDBManager(config *mysql.Config) (*DBManager, error) {
 
 	return &DBManager{
 		connection: conn,
+		logger:     logger,
+		input:      inputChannel,
+		output:     outputChannel,
+		numWorkers: numWorkers,
+		mutex:      sync.Mutex{},
 	}, nil
 }
 
@@ -58,7 +70,7 @@ func (dm *DBManager) InsertMarketDay(day *parser.MarketDay) (time.Time, error) {
 	}
 
 	// chunk the records
-	chunks := chunkSlice[parser.MarketHistoryCSVRecord](day.Records, MAXCHUNKSIZE)
+	chunks := chunkSlice(day.Records, MAXCHUNKSIZE)
 	for _, chunk := range chunks {
 		queryParts := prepQueryForChunk(uint(dateId), chunk)
 		_, err := tx.Exec(queryParts.Query, queryParts.Args...)
@@ -72,4 +84,24 @@ func (dm *DBManager) InsertMarketDay(day *parser.MarketDay) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return day.Date, nil
+}
+
+func (dm *DBManager) Start() {
+	for range dm.numWorkers {
+		go func() {
+			for marketDay := range dm.input {
+				res, err := dm.InsertMarketDay(marketDay)
+				if err != nil {
+					dm.mutex.Lock()
+					errMsg := fmt.Sprintf("Failed to insert the data for %s: %s", marketDay.Date.Format(time.DateOnly), err)
+					dm.logger.Error(errMsg)
+					dm.mutex.Unlock()
+				} else {
+					dm.mutex.Lock()
+					dm.output <- res
+					dm.mutex.Unlock()
+				}
+			}
+		}()
+	}
 }
