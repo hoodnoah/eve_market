@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
-	dbs "github.com/hoodnoah/eve_market/monitor/dbservice"
-	mds "github.com/hoodnoah/eve_market/monitor/parser"
+	"github.com/hoodnoah/eve_market/monitor/dbservice"
+	"github.com/hoodnoah/eve_market/monitor/logger"
+	"github.com/hoodnoah/eve_market/monitor/parser"
 )
 
 var MySqlConfig mysql.Config = mysql.Config{
@@ -23,7 +25,7 @@ var MySqlConfig mysql.Config = mysql.Config{
 func clearTables(conn *sql.DB) error {
 	tx, err := conn.Begin()
 	if err != nil {
-		return fmt.Errorf("Transaction failed: %v", err)
+		return fmt.Errorf("transaction failed: %v", err)
 	}
 	defer tx.Rollback()
 
@@ -34,34 +36,49 @@ func clearTables(conn *sql.DB) error {
 	for _, table := range tables {
 		_, err := tx.Exec("DELETE FROM " + table + ";")
 		if err != nil {
-			return fmt.Errorf("Failed to create truncate query for table %s: %v", table, err)
+			return fmt.Errorf("failed to create truncate query for table %s: %v", table, err)
 		}
 		_, err = tx.Exec("ALTER TABLE " + table + " AUTO_INCREMENT=1;")
 		if err != nil {
-			return fmt.Errorf("Failed to reset auto increment: %v", err)
+			return fmt.Errorf("failed to reset auto increment: %v", err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("Failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
 	return nil
 }
 
 type TestSetup struct {
-	Connection *sql.DB
-	DBManager  *dbs.DBManager
-	TearDown   func()
+	Connection    *sql.DB
+	Logger        logger.ILogger
+	DBManager     *dbservice.DBManager
+	InputChannel  chan *parser.MarketDay
+	OutputChannel chan time.Time
+	TearDown      func()
 }
 
-func Setup() (*TestSetup, error) {
+type DummyLogger struct{}
+
+var _ logger.ILogger = (*DummyLogger)(nil)
+
+func (d *DummyLogger) Debug(_ string) {}
+func (d *DummyLogger) Info(_ string)  {}
+func (d *DummyLogger) Warn(_ string)  {}
+func (d *DummyLogger) Error(_ string) {}
+func (d *DummyLogger) Start()         {}
+
+func Setup(inputChannel chan *parser.MarketDay, outputChannel chan time.Time) (*TestSetup, error) {
 	connection, err := sql.Open("mysql", MySqlConfig.FormatDSN())
 	if err != nil {
 		return nil, err
 	}
 
-	dbManager, err := dbs.NewDBManager(&MySqlConfig)
+	dummyLogger := &DummyLogger{}
+
+	dbManager, err := dbservice.NewDBManager(&MySqlConfig, dummyLogger, inputChannel, outputChannel, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +92,12 @@ func Setup() (*TestSetup, error) {
 	}
 
 	return &TestSetup{
-		Connection: connection,
-		DBManager:  dbManager,
-		TearDown:   tearDown,
+		Connection:    connection,
+		DBManager:     dbManager,
+		TearDown:      tearDown,
+		Logger:        dummyLogger,
+		InputChannel:  inputChannel,
+		OutputChannel: outputChannel,
 	}, nil
 }
 
@@ -86,8 +106,8 @@ type Scannable interface {
 }
 
 // scans a row into a record
-func ScanRowToRecord[T Scannable](row T) (*mds.MarketHistoryCSVRecord, error) {
-	resultRecord := mds.MarketHistoryCSVRecord{}
+func ScanRowToRecord[T Scannable](row T) (*parser.MarketHistoryCSVRecord, error) {
+	resultRecord := parser.MarketHistoryCSVRecord{}
 	if err := row.Scan(
 		&resultRecord.Date,
 		&resultRecord.RegionID,

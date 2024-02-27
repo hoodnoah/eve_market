@@ -1,24 +1,41 @@
 package integration_tests
 
 import (
-	"bytes"
+	"compress/bzip2"
 	"os"
 	"testing"
 	"time"
 
-	mds "github.com/hoodnoah/eve_market/monitor/parser"
+	"github.com/hoodnoah/eve_market/monitor/parser"
 )
+
+func outputChanToSlice(outputChan chan time.Time) []time.Time {
+	output := make([]time.Time, 0, 1)
+	timeout := time.After(2000 * time.Millisecond)
+	for {
+		select {
+		case d := <-outputChan:
+			output = append(output, d)
+		case <-timeout:
+			return output
+		}
+	}
+}
 
 func TestInsertMarketDay(t *testing.T) {
 	t.Run("it should insert a sample day with one record", func(t *testing.T) {
 		// arrange
-		testSetup, err := Setup()
+		inputChan := make(chan *parser.MarketDay)
+		outputChan := make(chan time.Time)
+
+		testSetup, err := Setup(inputChan, outputChan)
 		if err != nil {
 			t.Fatalf("failed to get test setup: %v", err)
 		}
+		testSetup.DBManager.Start()
 		defer testSetup.TearDown()
 
-		testRecords := []mds.MarketHistoryCSVRecord{
+		testRecords := []parser.MarketHistoryCSVRecord{
 			{
 				Date:       time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC),
 				RegionID:   1,
@@ -31,15 +48,21 @@ func TestInsertMarketDay(t *testing.T) {
 			},
 		}
 
-		testDay := mds.MarketDay{
+		testDay := parser.MarketDay{
 			Date:    time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC),
 			Records: testRecords,
 		}
 
 		// act
-		_, err = testSetup.DBManager.InsertMarketDay(&testDay)
-		if err != nil {
-			t.Fatalf("failed to insert a day: %v", err)
+		inputChan <- &testDay
+		outputs := outputChanToSlice(outputChan)
+
+		if len(outputs) != 1 {
+			t.Fatalf("Expected 1 output for 1 day's insertion, received %d", len(outputs))
+		}
+
+		if !outputs[0].Equal(time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("Expected returned date to be 2003-10-01, received %s", outputs[0].Format(time.DateOnly))
 		}
 
 		// assert
@@ -119,30 +142,39 @@ func TestInsertMarketDay(t *testing.T) {
 
 	t.Run("it should insert the sample file from 2024-02-10", func(t *testing.T) {
 		// arrange
-		testSetup, err := Setup()
+		inputChan := make(chan *parser.MarketDay)
+		outputChan := make(chan time.Time)
+		testSetup, err := Setup(inputChan, outputChan)
+		testSetup.DBManager.Start()
 		if err != nil {
 			t.Fatalf("failed to get test setup: %v", err)
 		}
-		// defer testSetup.TearDown()
+		defer testSetup.TearDown()
 
-		mockDownloadFn := func(_ string) (mds.ZippedReader, error) {
-			file, err := os.ReadFile("../testdata/exports/market-history-2024-02-10.csv.bz2")
-			if err != nil {
-				return nil, err
-			}
-			return bytes.NewReader(file), nil
-		}
-
-		dataSvc := mds.NewMarketDataService(mockDownloadFn, mds.DecompressFile, mds.ParseFile)
-		day, err := dataSvc.FetchAndParseDay(time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC))
+		// read in the input file and parse it
+		inputFile, err := os.Open("../testdata/exports/market-history-2024-02-10.csv.bz2")
 		if err != nil {
-			t.Fatalf("failed to parse the file: %v", err)
+			t.Fatalf("failed to read input file: %v", err)
+		}
+		reader := parser.DatedReader{
+			Day:    time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC),
+			Reader: parser.UnzippedReader(bzip2.NewReader(inputFile)),
+		}
+		decompressed, err := parser.ParseFile(&reader)
+		if err != nil {
+			t.Fatalf("failed to parse the input file: %v", err)
 		}
 
 		// act
-		_, err = testSetup.DBManager.InsertMarketDay(day)
-		if err != nil {
-			t.Fatalf("Failed to insert day: %v", err)
+		inputChan <- decompressed
+		outputList := outputChanToSlice(outputChan)
+
+		if len(outputList) != 1 {
+			t.Fatalf("expected only 1 returned date, received %d", len(outputList))
+		}
+
+		if !outputList[0].Equal(time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("expected to receive 2024-02-10, received %s", outputList[0].Format(time.DateOnly))
 		}
 
 		// assert
