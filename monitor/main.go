@@ -2,74 +2,49 @@ package main
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/hoodnoah/eve_market/monitor/dateservice"
+	"github.com/hoodnoah/eve_market/monitor/dates"
+	"github.com/hoodnoah/eve_market/monitor/downloader"
+	"github.com/hoodnoah/eve_market/monitor/logger"
+	"github.com/hoodnoah/eve_market/monitor/parser"
 )
 
-func GetRateLimiter(requestsPerSecond int) chan bool {
-	interval := time.Second / time.Duration(requestsPerSecond)
-	ticker := time.NewTicker(interval)
+const RequestsPerSecond = 3
+const NumWorkers = 2
 
-	tokenBucket := make(chan bool, requestsPerSecond)
-
-	// start replenishing the tokenbucket
-	go func() {
-		for range ticker.C {
-			select {
-			case tokenBucket <- true:
-				// token added
-			default:
-				// bucket full
-			}
-		}
-	}()
-
-	return tokenBucket
-}
-
-func mockDownloader(thing int) {
-	fmt.Printf("Downloading item %d...\n", thing)
-	time.Sleep(2 * time.Second)
+func fakeDateFn() time.Time {
+	return time.Date(2003, 10, 5, 0, 0, 0, 0, time.UTC)
 }
 
 func main() {
+	// setup logger
+	logger := logger.NewConsoleLogger(10) // a healthy buffer since multiple services log
+	logger.Start()
+
+	// setup channels
+	datesChannel := make(chan time.Time, NumWorkers)
+	readerChannel := make(chan *parser.DatedReader, NumWorkers)
+	marketDayChannel := make(chan *parser.MarketDay, NumWorkers)
+	defer close(datesChannel)
+	defer close(readerChannel)
+	defer close(marketDayChannel)
+	logger.Debug("channels initialized")
+
 	// setup services
-	dateSvc := dateservice.NewEveRefsDateService(time.Now)
+	dateIterator := dates.NewDateIterator(fakeDateFn, datesChannel)
+	downloadManager := downloader.NewDownloadManager(logger, RequestsPerSecond, NumWorkers, readerChannel)
+	parseManager := parser.NewMarketDataParser(logger, parser.DecompressFile, parser.ParseFile, readerChannel, marketDayChannel, NumWorkers)
+	logger.Debug("services initialized")
 
-	// get dates
-	dates := dateSvc.EnumerateDates()
+	// start services
+	dateIterator.Start()
+	downloadManager.Start(datesChannel)
+	parseManager.Start()
+	logger.Debug("services started")
 
-	fmt.Printf("Number of dates between 2003-10-01 and now: %d\n\n", len(dates))
-
-	thingsToDownload := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
-	downloaderChannel := make(chan int, len(thingsToDownload))
-	for _, dl := range thingsToDownload {
-		downloaderChannel <- dl
+	for parsedResult := range marketDayChannel {
+		msg := fmt.Sprintf("Parsed %d records for %s", len(parsedResult.Records), parsedResult.Date.Format(time.DateOnly))
+		logger.Debug(msg)
 	}
-
-	tokenBucket := GetRateLimiter(2)
-	var wg sync.WaitGroup
-
-	startTime := time.Now()
-	for i := 1; i <= 2; i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for item := range downloaderChannel {
-				<-tokenBucket
-				mockDownloader(item)
-			}
-		}()
-	}
-
-	close(downloaderChannel)
-
-	wg.Wait()
-	endTime := time.Now()
-
-	timeElapsed := endTime.Sub(startTime)
-	fmt.Println(timeElapsed)
 }

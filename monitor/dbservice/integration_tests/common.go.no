@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	dbs "github.com/hoodnoah/eve_market/monitor/dbservice"
-	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
+	mds "github.com/hoodnoah/eve_market/monitor/parser"
 )
 
 var MySqlConfig mysql.Config = mysql.Config{

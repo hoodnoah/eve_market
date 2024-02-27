@@ -1,4 +1,4 @@
-package marketdataservice
+package parser
 
 import (
 	"bytes"
@@ -48,7 +48,7 @@ const file2003 = "./testdata/marketdataservice/market-history-2003-10-01.csv.bz2
 const file2024 = "./testdata/marketdataservice/market-history-2024-02-10.csv.bz2"
 
 var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
-	MarketHistoryCSVRecord{
+	{
 		Date:       time.Date(2003, time.October, 1, 0, 0, 0, 0, time.UTC),
 		RegionID:   10000001,
 		TypeID:     18,
@@ -58,7 +58,7 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 		Volume:     340,
 		OrderCount: 2,
 	},
-	MarketHistoryCSVRecord{
+	{
 		Date:       time.Date(2003, time.October, 1, 0, 0, 0, 0, time.UTC),
 		RegionID:   10000001,
 		TypeID:     20,
@@ -68,7 +68,7 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 		Volume:     143,
 		OrderCount: 1,
 	},
-	MarketHistoryCSVRecord{
+	{
 		Date:       time.Date(2003, time.October, 1, 0, 0, 0, 0, time.UTC),
 		RegionID:   10000001,
 		TypeID:     34,
@@ -78,7 +78,7 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 		Volume:     21188886,
 		OrderCount: 43,
 	},
-	MarketHistoryCSVRecord{
+	{
 		Date:       time.Date(2003, time.October, 1, 0, 0, 0, 0, time.UTC),
 		RegionID:   10000001,
 		TypeID:     35,
@@ -88,7 +88,7 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 		Volume:     9250727,
 		OrderCount: 40,
 	},
-	MarketHistoryCSVRecord{
+	{
 		Date:       time.Date(2003, time.October, 1, 0, 0, 0, 0, time.UTC),
 		RegionID:   10000001,
 		TypeID:     36,
@@ -101,7 +101,7 @@ var EXPECTED_RECORDS = []MarketHistoryCSVRecord{
 }
 
 func setup(filePath string) struct {
-	Service     IMarketDataService
+	Service     IMarketDataParser
 	DownloadArg *string
 } {
 	dlArg := new(string)
@@ -116,10 +116,10 @@ func setup(filePath string) struct {
 	}
 
 	return struct {
-		Service     IMarketDataService
+		Service     IMarketDataParser
 		DownloadArg *string
 	}{
-		Service:     NewMarketDataService(mockDownload, DecompressFile, ParseFile),
+		Service:     NewMarketDataParser(mockDownload, DecompressFile, ParseFile),
 		DownloadArg: dlArg,
 	}
 }

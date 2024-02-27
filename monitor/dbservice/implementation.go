@@ -7,7 +7,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 
-	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
+	"github.com/hoodnoah/eve_market/monitor/parser"
 )
 
 // constructor for
@@ -39,7 +39,7 @@ func (dm *DBManager) GetCompletedDates() []time.Time {
 
 // tries to insert an entire market day's data
 // fails unless the entire day can be inserted at once
-func (dm *DBManager) InsertMarketDay(day *mds.MarketDay) (time.Time, error) {
+func (dm *DBManager) InsertMarketDay(day *parser.MarketDay) (time.Time, error) {
 	tx, err := dm.connection.Begin()
 	if err != nil {
 		return time.Time{}, err
@@ -58,7 +58,7 @@ func (dm *DBManager) InsertMarketDay(day *mds.MarketDay) (time.Time, error) {
 	}
 
 	// chunk the records
-	chunks := chunkSlice[mds.MarketHistoryCSVRecord](day.Records, MAXCHUNKSIZE)
+	chunks := chunkSlice[parser.MarketHistoryCSVRecord](day.Records, MAXCHUNKSIZE)
 	for _, chunk := range chunks {
 		queryParts := prepQueryForChunk(uint(dateId), chunk)
 		_, err := tx.Exec(queryParts.Query, queryParts.Args...)
@@ -73,74 +73,3 @@ func (dm *DBManager) InsertMarketDay(day *mds.MarketDay) (time.Time, error) {
 	}
 	return day.Date, nil
 }
-
-// // Insert several records at once
-// func (dm *DBManager) InsertMany(records []mds.MarketHistoryCSVRecord) error {
-// 	chunkedRecords := chunkSlice[mds.MarketHistoryCSVRecord](records, MAXCHUNKSIZE)
-
-// 	tx, err := service.connection.Begin()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer tx.Rollback()
-
-// 	for _, chunk := range chunkedRecords {
-// 		res := prepQueryForChunk(chunk)
-// 		_, err := tx.Exec(res.Query, res.Args...)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return tx.Commit()
-// }
-// func (service *MySqlDBService) QueryOne(string) (*mds.MarketHistoryCSVRecord, error) {
-// 	return nil, errors.New("QueryOne not implemented")
-// }
-// func (service *MySqlDBService) QueryMany(string) ([]mds.MarketHistoryCSVRecord, error) {
-// 	return nil, errors.New("QueryMany not implemented")
-// }
-
-// func (service MySqlDBService) Close() error {
-// 	return service.connection.Close()
-// }
-
-// // UTIL
-// // creates a given table in the database
-// func createTable(connection *sql.DB, query string) error {
-// 	_, err := connection.Exec(query)
-
-// 	return err
-// }
-
-// // constructor for a DBService
-// func NewMySqlDBService(config *mysql.Config) (IDBService, error) {
-// 	conn, err := sql.Open(
-// 		"mysql",
-// 		config.FormatDSN(),
-// 	)
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// ensure valid connection
-// 	err = conn.Ping()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	err = createTable(conn, marketDataTableTemplate)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	err = createTable(conn, completedDatesTableTemplate)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &MySqlDBService{
-// 		connection: conn,
-// 	}, nil
-// }

@@ -1,11 +1,52 @@
-package marketdataservice
+package parser
 
 import (
+	"compress/bzip2"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// Decompresses the provided bzip file
+func DecompressFile(zippedFile *DatedReader) *DatedReader {
+	reader := bzip2.NewReader(zippedFile.Reader)
+	return &DatedReader{
+		Day:    zippedFile.Day,
+		Reader: UnzippedReader(reader),
+	}
+}
+
+// Parses the provided file into a slice of MarketHistoryCSVRecords
+func ParseFile(unzippedFile *DatedReader) (*MarketDay, error) {
+	r := csv.NewReader(unzippedFile.Reader)
+
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	columnIndices, err := findColumnIndices(rows[0])
+	if err != nil {
+		return nil, err
+	}
+
+	var records []MarketHistoryCSVRecord
+
+	for _, val := range rows[1:] {
+		parseResult, err := parseRecord(columnIndices, val)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, *parseResult)
+	}
+
+	return &MarketDay{
+		Date:    unzippedFile.Day,
+		Records: records,
+	}, nil
+}
 
 // parses a date of format yyyy-mm-dd into a time
 func parseDate(dateStr string) (time.Time, error) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	mds "github.com/hoodnoah/eve_market/monitor/marketdataservice"
+	mds "github.com/hoodnoah/eve_market/monitor/parser"
 )
 
 // setup the tables

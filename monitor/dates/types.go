@@ -8,7 +8,8 @@ import (
 type NowFn func() time.Time
 
 type DateIterator struct {
-	currentDate time.Time
-	mutex       sync.Mutex
-	nowFn       NowFn
+	currentDate    time.Time
+	mutex          sync.Mutex
+	nowFn          NowFn
+	resultsChannel chan time.Time
 }

@@ -1,4 +1,4 @@
-package marketdataservice
+package parser
 
 var fieldNames = [8]string{
 	"date",

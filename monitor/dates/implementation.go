@@ -7,12 +7,22 @@ import (
 
 var firstDateWithData = time.Date(2003, 10, 1, 0, 0, 0, 0, time.UTC)
 
-func NewDateIterator(currentDateFn NowFn) *DateIterator {
+func NewDateIterator(currentDateFn NowFn, outputChann chan time.Time) *DateIterator {
 	return &DateIterator{
-		currentDate: firstDateWithData,
-		nowFn:       currentDateFn,
-		mutex:       sync.Mutex{},
+		currentDate:    firstDateWithData,
+		nowFn:          currentDateFn,
+		mutex:          sync.Mutex{},
+		resultsChannel: outputChann,
 	}
+}
+
+// starts populating the dates channel, and returns it
+func (di *DateIterator) Start() {
+	go func() {
+		for di.IsNextReady() {
+			di.resultsChannel <- di.Next()
+		}
+	}()
 }
 
 // gets the next date in sequence

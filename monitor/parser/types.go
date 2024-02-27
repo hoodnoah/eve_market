@@ -1,8 +1,11 @@
-package marketdataservice
+package parser
 
 import (
 	"io"
+	"sync"
 	"time"
+
+	"github.com/hoodnoah/eve_market/monitor/logger"
 )
 
 type MarketHistoryCSVRecord struct {
@@ -25,16 +28,24 @@ type MarketDay struct {
 type ZippedReader io.Reader
 type UnzippedReader io.Reader
 
-type Download func(url string) (ZippedReader, error)
-type Decompress func(reader ZippedReader) (UnzippedReader, error)
-type Parse func(reader UnzippedReader) ([]MarketHistoryCSVRecord, error)
-
-type IMarketDataService interface {
-	FetchAndParseDay(day time.Time) (*MarketDay, error)
+type DatedReader struct {
+	Day    time.Time
+	Reader io.Reader
 }
 
-type MarketDataService struct {
-	download   Download
+type Decompress func(zippedRecord *DatedReader) *DatedReader
+type Parse func(unzippedRecord *DatedReader) (*MarketDay, error)
+
+type IMarketDataParser interface {
+	Start()
+}
+
+type MarketDataParser struct {
+	logger     logger.ILogger
 	decompress Decompress
 	parse      Parse
+	numWorkers uint
+	input      chan *DatedReader
+	results    chan *MarketDay
+	mutex      sync.Mutex
 }
