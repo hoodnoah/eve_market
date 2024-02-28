@@ -19,5 +19,6 @@ type DownloadManager struct {
 	datesChannel   chan time.Time
 	resultsChannel chan *parser.DatedReader
 	numWorkers     uint
+	excludeDates   map[time.Time]bool
 	mutex          sync.Mutex
 }

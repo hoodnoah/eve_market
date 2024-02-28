@@ -33,7 +33,7 @@ func (rl *RateLimiter) StartRateLimiter() chan bool {
 }
 
 // constructor for a download manager
-func NewDownloadManager(logger logger.ILogger, requestsPerSecond uint, numWorkers uint, resultsChannel chan *parser.DatedReader) *DownloadManager {
+func NewDownloadManager(logger logger.ILogger, requestsPerSecond uint, numWorkers uint, inputChannel chan time.Time, resultsChannel chan *parser.DatedReader) *DownloadManager {
 	if logger == nil {
 		panic("Failed to create DownloadManager; logger must not be nil")
 	}
@@ -41,8 +41,10 @@ func NewDownloadManager(logger logger.ILogger, requestsPerSecond uint, numWorker
 	return &DownloadManager{
 		rateLimiter:    *newRateLimiter(requestsPerSecond),
 		numWorkers:     numWorkers,
+		datesChannel:   inputChannel,
 		resultsChannel: resultsChannel,
 		logger:         logger,
+		excludeDates:   make(map[time.Time]bool),
 		mutex:          sync.Mutex{},
 	}
 }
@@ -61,14 +63,26 @@ func (dm *DownloadManager) handleError(err error, date time.Time) {
 	dm.logger.Error(msg)
 }
 
+func (dm *DownloadManager) isExcludableDate(date time.Time) bool {
+	return dm.excludeDates[date]
+}
+
 // starts the downloading of dates
-func (dm *DownloadManager) Start(datesChan chan time.Time) {
+func (dm *DownloadManager) Start() {
 	rateChannel := dm.rateLimiter.StartRateLimiter()
 
 	for range dm.numWorkers {
 		go func() {
-			for date := range datesChan {
+			for date := range dm.datesChannel {
+				// make sure the date isn't already retrieved
+				if dm.isExcludableDate(date) {
+					continue
+				}
+
+				// block on rate limited
 				<-rateChannel
+
+				// execute download
 				res, err := downloadFn(date)
 
 				if err != nil {
@@ -87,5 +101,14 @@ func (dm *DownloadManager) Start(datesChan chan time.Time) {
 
 			}
 		}()
+	}
+}
+
+func (dm *DownloadManager) Exclude(dates []time.Time) {
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
+
+	for _, date := range dates {
+		dm.excludeDates[date] = true
 	}
 }

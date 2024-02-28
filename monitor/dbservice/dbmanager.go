@@ -45,8 +45,26 @@ func (dm *DBManager) Close() error {
 }
 
 // gets a list of all dates successfully inserted
-func (dm *DBManager) GetCompletedDates() []time.Time {
-	return make([]time.Time, 0)
+func (dm *DBManager) GetCompletedDates() ([]time.Time, error) {
+	dates := make([]time.Time, 0)
+	statement, err := dm.connection.Prepare("SELECT DISTINCT date FROM completed_dates ORDER BY date ASC")
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := statement.Query()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var date time.Time
+		rows.Scan(&date)
+		dates = append(dates, date)
+	}
+
+	return dates, nil
 }
 
 // tries to insert an entire market day's data

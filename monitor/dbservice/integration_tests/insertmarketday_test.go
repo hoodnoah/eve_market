@@ -194,7 +194,7 @@ func TestInsertMarketDay(t *testing.T) {
 		}
 
 		if numRecords != 52484 {
-			t.Fatalf("Expoected 52484 records, received %d", numRecords)
+			t.Fatalf("expected 52484 records, received %d", numRecords)
 		}
 	})
 }

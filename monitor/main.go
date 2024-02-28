@@ -47,19 +47,25 @@ func main() {
 
 	// setup services
 	dateIterator := dates.NewDateIterator(fakeDateFn, datesChannel)
-	downloadManager := downloader.NewDownloadManager(logger, RequestsPerSecond, NumWorkers, readerChannel)
+	downloadManager := downloader.NewDownloadManager(logger, RequestsPerSecond, NumWorkers, datesChannel, readerChannel)
 	parseManager := parser.NewMarketDataParser(logger, parser.DecompressFile, parser.ParseFile, readerChannel, marketDayChannel, NumWorkers)
 	dbManager, err := dbservice.NewDBManager(&MySqlConfig, logger, marketDayChannel, dbResultsChannel, NumWorkers)
 	if err != nil {
-		msg := fmt.Sprintf("Failed to initalize a new dbmanager: %s", err)
+		msg := fmt.Sprintf("Failed to initialize a new dbmanager: %s", err)
 		panic(msg)
 	}
 	defer dbManager.Close()
 	logger.Debug("services initialized")
 
+	// skip dates which have already been downloaded
+	completedDates, _ := dbManager.GetCompletedDates()
+	if completedDates != nil {
+		downloadManager.Exclude(completedDates)
+	}
+
 	// start services
 	dateIterator.Start()
-	downloadManager.Start(datesChannel)
+	downloadManager.Start()
 	parseManager.Start()
 	dbManager.Start()
 	logger.Debug("services started")
