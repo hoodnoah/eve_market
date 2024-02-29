@@ -8,29 +8,8 @@ import (
 
 	"github.com/hoodnoah/eve_market/monitor/logger"
 	"github.com/hoodnoah/eve_market/monitor/parser"
+	"github.com/hoodnoah/eve_market/monitor/ratelimiter"
 )
-
-func newRateLimiter(requestsPerSecond uint) *RateLimiter {
-	return &RateLimiter{
-		ticker:      time.NewTicker(time.Second / time.Duration(requestsPerSecond)),
-		tokenBucket: make(chan bool, requestsPerSecond),
-	}
-}
-
-// exposes the rate limiter channel
-func (rl *RateLimiter) StartRateLimiter() chan bool {
-	// populate the bucket
-	go func() {
-		for range rl.ticker.C {
-			select {
-			case rl.tokenBucket <- true:
-			default:
-			}
-		}
-	}()
-
-	return rl.tokenBucket
-}
 
 // constructor for a download manager
 func NewDownloadManager(logger logger.ILogger, requestsPerSecond uint, numWorkers uint, inputChannel chan time.Time, resultsChannel chan *parser.DatedReader) *DownloadManager {
@@ -38,8 +17,11 @@ func NewDownloadManager(logger logger.ILogger, requestsPerSecond uint, numWorker
 		panic("Failed to create DownloadManager; logger must not be nil")
 	}
 
+	rl := ratelimiter.NewTokenBucketRateLimiter(int(requestsPerSecond))
+	rl.Start()
+
 	return &DownloadManager{
-		rateLimiter:    *newRateLimiter(requestsPerSecond),
+		rateLimiter:    rl,
 		numWorkers:     numWorkers,
 		datesChannel:   inputChannel,
 		resultsChannel: resultsChannel,
@@ -69,7 +51,7 @@ func (dm *DownloadManager) isExcludableDate(date time.Time) bool {
 
 // starts the downloading of dates
 func (dm *DownloadManager) Start() {
-	rateChannel := dm.rateLimiter.StartRateLimiter()
+	rateChannel := dm.rateLimiter.GetChannel()
 
 	for range dm.numWorkers {
 		go func() {

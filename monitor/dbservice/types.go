@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hoodnoah/eve_market/monitor/idcache"
 	"github.com/hoodnoah/eve_market/monitor/logger"
 	"github.com/hoodnoah/eve_market/monitor/parser"
 )
@@ -19,10 +20,17 @@ type MySqlConfig struct {
 }
 
 type DBManager struct {
-	connection *sql.DB
-	logger     logger.ILogger
-	input      chan *parser.MarketDay
-	output     chan time.Time
-	numWorkers uint
-	mutex      sync.Mutex
+	connection   *sql.DB
+	logger       logger.ILogger
+	input        chan *parser.MarketDay
+	output       chan time.Time
+	numWorkers   uint
+	idCache      *idcache.IIDCache
+	idCacheMutex sync.Mutex
+	mutex        sync.Mutex
+}
+
+type InsertID struct {
+	ID    int
+	Value string
 }

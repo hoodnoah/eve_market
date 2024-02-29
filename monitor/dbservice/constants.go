@@ -16,6 +16,14 @@ var marketDataTableTemplate = `
 		FOREIGN KEY (date_id)
 			REFERENCES completed_dates(id)
 			ON UPDATE CASCADE
+			ON DELETE CASCADE,
+		FOREIGN KEY (region_id)
+			REFERENCES region_id(id)
+			ON UPDATE CASCADE
+			ON DELETE CASCADE,
+		FOREIGN KEY (type_id)
+			REFERENCES type_id(id)
+			ON UPDATE CASCADE
 			ON DELETE CASCADE
 	);
 `
@@ -23,10 +31,28 @@ var marketDataTableTemplate = `
 var completedDatesTableTemplate = `
 	CREATE TABLE IF NOT EXISTS completed_dates (
 		id INT NOT NULL AUTO_INCREMENT,
-		date DATE,
+		date DATE NOT NULL,
 
 		PRIMARY KEY (id)
 	);
+`
+
+var regionIDsTableTemplate = `
+		CREATE TABLE IF NOT EXISTS region_id (
+			id INTEGER UNSIGNED NOT NULL,
+			value VARCHAR(20) NOT NULL,
+
+			PRIMARY KEY (id)
+		)
+`
+
+var typeIDsTableTemplate = `
+		CREATE TABLE IF NOT EXISTS type_id (
+			id INTEGER UNSIGNED NOT NULL,
+			value VARCHAR(20) NOT NULL,
+
+			PRIMARY KEY (id)
+		)
 `
 
 var insertCompletedDateTemplate = `
@@ -43,6 +69,22 @@ var insertManyTemplate = `
 	VALUES
 		%s
 	ON DUPLICATE KEY UPDATE date_id=date_id;
+`
+
+var insertRegionIDsTemplate = `
+		INSERT INTO region_id
+			(id, value)
+		VALUES
+			%s
+		ON DUPLICATE KEY UPDATE id=id;
+`
+
+var insertTypeIDsTemplate = `
+		INSERT INTO type_id
+			(id, value)
+		VALUES
+			%s
+		ON DUPLICATE KEY UPDATE id=id;
 `
 
 const MAXCHUNKSIZE = 2000

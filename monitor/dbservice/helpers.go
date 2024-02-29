@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hoodnoah/eve_market/monitor/idcache"
 	mds "github.com/hoodnoah/eve_market/monitor/parser"
 )
 
@@ -16,6 +17,12 @@ func bootstrapTables(connection *sql.DB) error {
 	}
 	defer tx.Rollback()
 
+	if _, err = tx.Exec(regionIDsTableTemplate); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(typeIDsTableTemplate); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(completedDatesTableTemplate); err != nil {
 		return err
 	}
@@ -26,22 +33,46 @@ func bootstrapTables(connection *sql.DB) error {
 	return tx.Commit()
 }
 
-// chunk a slice into slices of at most size n, where
-// n is the provided chunkSize
-func chunkSlice[T any](slice []T, chunkSize int) [][]T {
-	returnValue := make([][]T, 0, 0)
-	if len(slice) <= chunkSize {
-		return append(returnValue, slice)
+// fetch the existing region ids from the database
+func fetchKnownIDS(connection *sql.DB, idType idcache.IDType) (*idcache.KnownIDs, error) {
+	ids := make(map[int]string, 0)
+	var tableName string
+	switch idType {
+	case idcache.RegionID:
+		tableName = "region_id"
+	default:
+		tableName = "type_id"
 	}
 
-	idx := 0
-	for idx < len(slice) {
-		high := idx + min(chunkSize, len(slice)-idx)
-		returnValue = append(returnValue, slice[idx:high])
-		idx = high
+	query := fmt.Sprintf("SELECT DISTINCT id, value FROM %s;", tableName)
+	statement, err := connection.Prepare(query)
+
+	if err != nil {
+		return nil, err
+	}
+	rows, err := statement.Query()
+	if err != nil {
+		return nil, err
 	}
 
-	return returnValue
+	for rows.Next() {
+		var id int
+		var value string
+		err = rows.Scan(&id, &value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = statement.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return &idcache.KnownIDs{
+		Type: idcache.RegionID,
+		IDS:  ids,
+	}, nil
 }
 
 func prepQueryForChunk(dateID uint, chunk []mds.MarketHistoryCSVRecord) struct {
@@ -61,6 +92,38 @@ func prepQueryForChunk(dateID uint, chunk []mds.MarketHistoryCSVRecord) struct {
 		Args  []interface{}
 	}{
 		Query: fmt.Sprintf(insertManyTemplate, strings.Join(placeholders, ", ")),
+		Args:  args,
+	}
+}
+
+func prepIDInsertQuery(idType idcache.IDType, idValues []InsertID) struct {
+	Query string
+	Args  []interface{}
+} {
+	var queryTemplate string
+	switch idType {
+	case idcache.RegionID:
+		queryTemplate = insertRegionIDsTemplate
+	default:
+		queryTemplate = insertTypeIDsTemplate
+	}
+
+	numIds := len(idValues)
+	placeholders := make([]string, 0, numIds)
+	args := make([]interface{}, 0, numIds*2)
+
+	for _, insertID := range idValues {
+		id := insertID.ID
+		value := insertID.Value
+		placeholders = append(placeholders, "(?, ?)")
+		args = append(args, id, value)
+	}
+
+	return struct {
+		Query string
+		Args  []interface{}
+	}{
+		Query: fmt.Sprintf(queryTemplate, strings.Join(placeholders, ", ")),
 		Args:  args,
 	}
 }

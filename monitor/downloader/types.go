@@ -6,16 +6,12 @@ import (
 
 	"github.com/hoodnoah/eve_market/monitor/logger"
 	"github.com/hoodnoah/eve_market/monitor/parser"
+	"github.com/hoodnoah/eve_market/monitor/ratelimiter"
 )
-
-type RateLimiter struct {
-	ticker      *time.Ticker
-	tokenBucket chan bool
-}
 
 type DownloadManager struct {
 	logger         logger.ILogger
-	rateLimiter    RateLimiter
+	rateLimiter    ratelimiter.IRateLimiter
 	datesChannel   chan time.Time
 	resultsChannel chan *parser.DatedReader
 	numWorkers     uint
