@@ -62,6 +62,7 @@ func fetchKnownIDS(connection *sql.DB, idType idcache.IDType) (map[int]string, e
 		if err != nil {
 			return nil, err
 		}
+		ids[id] = value
 	}
 
 	err = statement.Close()

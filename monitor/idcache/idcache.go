@@ -118,8 +118,6 @@ func filterToUniqueIds(ids []int) []int {
 // label many ids at once
 func (idc *IDCache) LabelMany(ids []int) (map[int]string, error) {
 	uniqueIds := filterToUniqueIds(ids)
-	idc.logger.Debug(fmt.Sprintf("labeling %d ids...", len(uniqueIds)))
-
 	result := map[int]string{}
 
 	// find unknown ids
@@ -133,7 +131,6 @@ func (idc *IDCache) LabelMany(ids []int) (map[int]string, error) {
 		for _, chunk := range chunks {
 			// fetch unknown ids
 			esiResults, err := idc.fetchAllIds(chunk)
-			idc.logger.Debug(fmt.Sprintf("received %d results for a chunk of length %d", len(esiResults), len(chunk)))
 
 			if err != nil {
 				return nil, err

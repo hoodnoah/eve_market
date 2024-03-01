@@ -16,7 +16,7 @@ const RequestsPerSecond = 3
 const NumWorkers = 2
 
 func fakeDateFn() time.Time {
-	return time.Date(2003, 10, 2, 0, 0, 0, 0, time.UTC)
+	return time.Date(2003, 10, 4, 0, 0, 0, 0, time.UTC)
 }
 
 var MySqlConfig mysql.Config = mysql.Config{
