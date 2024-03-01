@@ -1,18 +1,10 @@
 package idcache
 
 import (
-	"net/http"
 	"sync"
 
 	"github.com/hoodnoah/eve_market/monitor/logger"
-	"github.com/hoodnoah/eve_market/monitor/ratelimiter"
 )
-
-type IIDCache interface {
-	SetKnownRegionIDs(regionIDs *RegionIDInput)
-	SetKnownTypeIDs(typeIDs *TypeIDInput)
-	Label(ids *UnknownIDs) (*KnownIDs, error)
-}
 
 type IDType int
 
@@ -21,39 +13,43 @@ const (
 	TypeID
 )
 
-type IDValue struct {
-	ID    int
-	Value string
+// interface
+type IIDcache interface {
+	SetKnownIDs(ids map[int]string)
+	Label(id int) (string, error)
+	LabelMany(ids []int) (map[int]string, error)
 }
 
-type UnknownIDs struct {
-	Type IDType
-	IDS  map[int]bool
+type IRequestClient interface {
+	FetchID(id int) (*ESITypeIDResponse, *APIRequestError)
+	FetchManyIDs(id []int) ([]ESITypeIDResponse, *APIRequestError)
 }
-
-type KnownIDs struct {
-	Type IDType
-	IDS  map[int]string
-}
-
-type RegionIDInput KnownIDs
-type TypeIDInput KnownIDs
 
 type IDCache struct {
-	logger      logger.ILogger
-	regionIDS   map[int]string
-	typeIDS     map[int]string
-	mutex       sync.Mutex
-	rateLimiter ratelimiter.IRateLimiter
-	client      http.Client
+	logger logger.ILogger
+	client IRequestClient
+	ids    map[int]string
+	mutex  sync.Mutex
 }
 
-type IDRequest struct {
-	IDs []int
-}
-
-type IDResponse struct {
+type ESITypeIDResponse struct {
 	Category string `json:"category"`
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
+}
+
+type FailureType int
+
+const (
+	RequestBodyCreationError FailureType = iota
+	RequestCreationError
+	RequestFailedError
+	InvalidRequestError
+	InvalidIDRequestError
+	ResponseParseError
+)
+
+type APIRequestError struct {
+	ErrorType FailureType
+	Err       error
 }

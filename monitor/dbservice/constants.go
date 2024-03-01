@@ -40,7 +40,7 @@ var completedDatesTableTemplate = `
 var regionIDsTableTemplate = `
 		CREATE TABLE IF NOT EXISTS region_id (
 			id INTEGER UNSIGNED NOT NULL,
-			value VARCHAR(20) NOT NULL,
+			value VARCHAR(256) NOT NULL,
 
 			PRIMARY KEY (id)
 		)
@@ -49,7 +49,7 @@ var regionIDsTableTemplate = `
 var typeIDsTableTemplate = `
 		CREATE TABLE IF NOT EXISTS type_id (
 			id INTEGER UNSIGNED NOT NULL,
-			value VARCHAR(20) NOT NULL,
+			value VARCHAR(256) NOT NULL,
 
 			PRIMARY KEY (id)
 		)

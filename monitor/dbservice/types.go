@@ -25,7 +25,7 @@ type DBManager struct {
 	input        chan *parser.MarketDay
 	output       chan time.Time
 	numWorkers   uint
-	idCache      *idcache.IIDCache
+	idCache      idcache.IIDcache
 	idCacheMutex sync.Mutex
 	mutex        sync.Mutex
 }

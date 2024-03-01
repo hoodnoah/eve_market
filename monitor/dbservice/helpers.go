@@ -34,7 +34,7 @@ func bootstrapTables(connection *sql.DB) error {
 }
 
 // fetch the existing region ids from the database
-func fetchKnownIDS(connection *sql.DB, idType idcache.IDType) (*idcache.KnownIDs, error) {
+func fetchKnownIDS(connection *sql.DB, idType idcache.IDType) (map[int]string, error) {
 	ids := make(map[int]string, 0)
 	var tableName string
 	switch idType {
@@ -69,10 +69,7 @@ func fetchKnownIDS(connection *sql.DB, idType idcache.IDType) (*idcache.KnownIDs
 		return nil, err
 	}
 
-	return &idcache.KnownIDs{
-		Type: idcache.RegionID,
-		IDS:  ids,
-	}, nil
+	return ids, nil
 }
 
 func prepQueryForChunk(dateID uint, chunk []mds.MarketHistoryCSVRecord) struct {

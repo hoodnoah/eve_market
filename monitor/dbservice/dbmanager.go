@@ -33,7 +33,8 @@ func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan
 	}
 
 	// setup an idCache
-	idCache := idcache.NewIDManager(logger)
+	idCacheClient := idcache.NewRateLimitedClient(1)
+	idCache := idcache.NewIDCache(logger, idCacheClient)
 	knownRegionIds, err := fetchKnownIDS(conn, idcache.RegionID)
 	if err != nil {
 		return nil, err
@@ -42,8 +43,8 @@ func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan
 	if err != nil {
 		return nil, err
 	}
-	idCache.SetKnownRegionIDs((*idcache.RegionIDInput)(knownRegionIds))
-	idCache.SetKnownTypeIDs((*idcache.TypeIDInput)(knownTypeIds))
+	idCache.SetKnownIDs(knownRegionIds)
+	idCache.SetKnownIDs(knownTypeIds)
 
 	return &DBManager{
 		connection:   conn,
@@ -51,7 +52,7 @@ func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan
 		input:        inputChannel,
 		output:       outputChannel,
 		numWorkers:   numWorkers,
-		idCache:      &idCache,
+		idCache:      idCache,
 		idCacheMutex: sync.Mutex{},
 		mutex:        sync.Mutex{},
 	}, nil
@@ -87,37 +88,32 @@ func (dm *DBManager) GetCompletedDates() ([]time.Time, error) {
 func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 	// enumerate all the day's ids
 	// using maps as sets to prevent duplication
-	regionIdsToLabel := idcache.UnknownIDs{
-		Type: idcache.RegionID,
-		IDS:  map[int]bool{},
-	}
-	typeIdsToLabel := idcache.UnknownIDs{
-		Type: idcache.TypeID,
-		IDS:  map[int]bool{},
-	}
+	regionIdsToLabel := []int{}
+	typeIdsToLabel := []int{}
 
 	for _, day := range date.Records {
-		regionIdsToLabel.IDS[int(day.RegionID)] = true
-		typeIdsToLabel.IDS[int(day.TypeID)] = true
+		regionIdsToLabel = append(regionIdsToLabel, int(day.RegionID))
+		typeIdsToLabel = append(typeIdsToLabel, int(day.TypeID))
 	}
 
 	// label them
-	labeledRegionIds, err := (*dm.idCache).Label(&regionIdsToLabel)
+	labeledRegionIds, err := (dm.idCache).LabelMany(regionIdsToLabel)
 	if err != nil {
 		return err
 	}
-	labeledTypeIds, err := (*dm.idCache).Label(&typeIdsToLabel)
+
+	labeledTypeIds, err := (dm.idCache).LabelMany(typeIdsToLabel)
 	if err != nil {
 		return err
 	}
 
 	// convert to list of structs for chunking
-	regionIDSInsertList := make([]InsertID, 0, len(labeledRegionIds.IDS))
-	typeIDSInsertList := make([]InsertID, 0, len(labeledTypeIds.IDS))
-	for k, v := range labeledRegionIds.IDS {
+	regionIDSInsertList := make([]InsertID, 0, len(labeledRegionIds))
+	typeIDSInsertList := make([]InsertID, 0, len(labeledTypeIds))
+	for k, v := range labeledRegionIds {
 		regionIDSInsertList = append(regionIDSInsertList, InsertID{ID: k, Value: v})
 	}
-	for k, v := range labeledTypeIds.IDS {
+	for k, v := range labeledTypeIds {
 		typeIDSInsertList = append(typeIDSInsertList, InsertID{ID: k, Value: v})
 	}
 
@@ -129,7 +125,7 @@ func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 	defer tx.Rollback()
 
 	for _, chunk := range util.ChunkSlice(regionIDSInsertList, MAXCHUNKSIZE*8/2) {
-		res := prepIDInsertQuery(labeledRegionIds.Type, chunk)
+		res := prepIDInsertQuery(idcache.RegionID, chunk)
 		_, err := tx.Exec(res.Query, res.Args...)
 		if err != nil {
 			return err
@@ -137,7 +133,7 @@ func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 	}
 
 	for _, chunk := range util.ChunkSlice(typeIDSInsertList, MAXCHUNKSIZE*8/2) {
-		res := prepIDInsertQuery(labeledTypeIds.Type, chunk)
+		res := prepIDInsertQuery(idcache.TypeID, chunk)
 		_, err := tx.Exec(res.Query, res.Args...)
 		if err != nil {
 			return err

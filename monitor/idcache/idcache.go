@@ -1,137 +1,179 @@
 package idcache
 
 import (
-	"bytes"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"sync"
 
 	"github.com/hoodnoah/eve_market/monitor/logger"
-	"github.com/hoodnoah/eve_market/monitor/ratelimiter"
 	"github.com/hoodnoah/eve_market/monitor/util"
 )
 
-func NewIDManager(logger logger.ILogger) IIDCache {
-	tokenBucket := ratelimiter.NewTokenBucketRateLimiter(1)
-	tokenBucket.Start()
-
+func NewIDCache(logger logger.ILogger, client IRequestClient) IIDcache {
 	return &IDCache{
-		logger:      logger,
-		regionIDS:   map[int]string{},
-		typeIDS:     map[int]string{},
-		rateLimiter: tokenBucket,
-		client:      *getClient(),
-		mutex:       sync.Mutex{},
+		logger: logger,
+		client: client,
+		ids:    map[int]string{},
+		mutex:  sync.Mutex{},
 	}
 }
 
-func (idmgr *IDCache) SetKnownRegionIDs(regionIds *RegionIDInput) {
-	idmgr.mutex.Lock()
-	defer idmgr.mutex.Unlock()
+func (cache *IDCache) Label(id int) (string, error) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
 
-	idmgr.regionIDS = regionIds.IDS
+	// if cache doesn't contain the id,
+	// fetch it
+	if cache.ids[id] == "" {
+		val, err := cache.client.FetchID(id)
+		if err != nil {
+			switch err.ErrorType {
+			case InvalidIDRequestError: // API says the ID doesn't exist, so use a default identifier
+				cache.ids[id] = fmt.Sprintf("invalidID_%d", id)
+			default: // otherwise do nothing; other errors are undefined behavior
+			}
+		} else {
+			cache.ids[id] = val.Name // success case, add to the cache
+		}
+	}
+
+	// if the cache contains the id, return it
+	if cache.ids[id] != "" {
+		return cache.ids[id], nil
+	}
+
+	return "", errors.New("ID unresolvable")
 }
 
-func (idmgr *IDCache) SetKnownTypeIDs(typeIds *TypeIDInput) {
-	idmgr.mutex.Lock()
-	defer idmgr.mutex.Unlock()
+// fetches a series of ids.
+// if, at any point, not all ids can be fetched and the reason is determined
+// to be a 404 error, indicating an invalid ID, it recursively narrows the search space until
+// the individual invalid ID can be detected and assigned an unknownID_id value.
+// if it fails for any other reason, the entire operation fails.
+func (idc *IDCache) fetchAllIds(ids []int) ([]ESITypeIDResponse, *APIRequestError) {
+	// base case 1: only 1 id left
+	if len(ids) == 1 {
+		id := ids[0]
+		res, err := idc.client.FetchID(id)
+		if err != nil && err.ErrorType == InvalidIDRequestError { // invalid id detected
+			result := ESITypeIDResponse{
+				Category: "",
+				ID:       id,
+				Name:     fmt.Sprintf("unknownID_%d", id),
+			}
+			return []ESITypeIDResponse{result}, nil
+		}
+		if err != nil && err.ErrorType != InvalidIDRequestError { // some other error
+			return nil, err
+		}
+		return []ESITypeIDResponse{*res}, nil
+	}
 
-	idmgr.typeIDS = typeIds.IDS
+	// base case 2: all ids resolve correctly, or error
+	// for a reason other than invalidIDRequestError
+	idc.logger.Debug(fmt.Sprintf("submitting request for %d ids...", len(ids)))
+	allIdsRes, allIdsErr := idc.client.FetchManyIDs(ids)
+	idc.logger.Debug(fmt.Sprintf("request completed."))
+	if allIdsErr == nil {
+		return allIdsRes, nil
+	}
+	if allIdsErr.ErrorType != InvalidIDRequestError {
+		return nil, allIdsErr
+	}
+
+	// recurse
+	midPoint := len(ids) / 2
+	left := ids[0:midPoint]
+	right := ids[midPoint:]
+
+	result1, err1 := idc.fetchAllIds(left)
+	result2, err2 := idc.fetchAllIds(right)
+
+	if err1 != nil {
+		return nil, err1
+	}
+	if err2 != nil {
+		return nil, err2
+	}
+
+	return append(result1, result2...), nil
 }
 
-// given unlabeled ids, map labels to them.
-// fetches their labels from the EVE API as needed
-func (idm *IDCache) Label(ids *UnknownIDs) (*KnownIDs, error) {
-	idm.mutex.Lock()
-	defer idm.mutex.Unlock()
-
-	// set map of known ids based on type
-	var knownIds *map[int]string
-	switch ids.Type {
-	case RegionID:
-		knownIds = &idm.regionIDS
-	default:
-		knownIds = &idm.typeIDS
+func filterToUniqueIds(ids []int) []int {
+	idsMap := map[int]bool{}
+	output := make([]int, 0)
+	for _, id := range ids {
+		idsMap[id] = true
 	}
 
-	idsToFetch := map[int]bool{}
-	for id := range ids.IDS {
-		if (*knownIds)[id] == "" {
-			idsToFetch[id] = true
+	for id, val := range idsMap {
+		if val {
+			output = append(output, id)
 		}
 	}
 
-	newIds, err := idm.fetchUnknownIds(&idsToFetch)
-	if err != nil {
-		idm.logger.Error(fmt.Sprintf("failed to fetch unknown ids: %s", err))
-		return nil, err
-	}
-
-	for id, value := range newIds {
-		(*knownIds)[id] = value
-	}
-
-	output := KnownIDs{
-		Type: ids.Type,
-		IDS:  *knownIds,
-	}
-
-	return &output, nil
+	return output
 }
 
-func (idm *IDCache) fetchUnknownIds(unknownIDS *map[int]bool) (map[int]string, error) {
-	output := map[int]string{}
+// label many ids at once
+func (idc *IDCache) LabelMany(ids []int) (map[int]string, error) {
+	uniqueIds := filterToUniqueIds(ids)
+	idc.logger.Debug(fmt.Sprintf("labeling %d ids...", len(uniqueIds)))
 
-	ids := make([]int, 0)
-	for id := range *unknownIDS {
-		ids = append(ids, id)
+	result := map[int]string{}
+
+	// find unknown ids
+	novelIds := idc.FindNovelIDs(uniqueIds)
+	if len(novelIds) == 0 {
+		for _, id := range uniqueIds {
+			result[id] = idc.ids[id]
+		}
+	} else {
+		chunks := util.ChunkSlice(novelIds, 1000)
+		for _, chunk := range chunks {
+			// fetch unknown ids
+			esiResults, err := idc.fetchAllIds(chunk)
+			idc.logger.Debug(fmt.Sprintf("received %d results for a chunk of length %d", len(esiResults), len(chunk)))
+
+			if err != nil {
+				return nil, err
+			}
+
+			// add to cache
+			for _, item := range esiResults {
+				idc.ids[item.ID] = item.Name
+			}
+		}
 	}
 
-	// chunk requests underneath the 1,000 item-per-request
-	// limit on the eve api
-	chunks := util.ChunkSlice(ids, maxItems)
-	idm.logger.Debug(fmt.Sprintf("Chunks: %v", chunks))
-
-	for _, chunk := range chunks {
-		requestBody, err := json.Marshal(chunk)
-		if err != nil {
-			return nil, err
-		}
-
-		request, err := http.NewRequest("POST", url, bytes.NewReader(requestBody))
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("User-Agent", "hood.noah@icloud.com | github.com/hoodnoah/eve_market/monitor")
-		if err != nil {
-			return nil, err
-		}
-
-		<-idm.rateLimiter.GetChannel()
-		response, err := idm.client.Do(request)
-		if err != nil {
-			return nil, err
-		}
-
-		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("failed to download ids %v: %s", chunk, response.Status)
-		}
-
-		bodyBytes, err := io.ReadAll(response.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		var results []IDResponse
-		err = json.Unmarshal(bodyBytes, &results)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, result := range results {
-			output[result.ID] = result.Name
-		}
-
+	// populate response
+	for _, id := range uniqueIds {
+		result[id] = idc.ids[id]
 	}
-	return output, nil
+
+	return result, nil
+
+}
+
+func (idc *IDCache) FindNovelIDs(ids []int) []int {
+	filteredIDs := make([]int, 0)
+	for _, id := range ids {
+		if idc.ids[id] == "" {
+			filteredIDs = append(filteredIDs, id)
+		}
+	}
+
+	return filteredIDs
+}
+
+// sets the ids already known
+// should generally be retrieved from the backing db,
+// then sent here
+func (idc *IDCache) SetKnownIDs(ids map[int]string) {
+	idc.mutex.Lock()
+	defer idc.mutex.Unlock()
+
+	for id, val := range ids {
+		idc.ids[id] = val
+	}
 }
