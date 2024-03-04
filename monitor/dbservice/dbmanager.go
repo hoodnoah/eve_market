@@ -33,7 +33,7 @@ func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan
 	}
 
 	// setup an idCache
-	idCacheClient := idcache.NewRateLimitedClient(1)
+	idCacheClient := idcache.NewRateLimitedClient(logger, 1, 3, 2.5)
 	idCache := idcache.NewIDCache(logger, idCacheClient)
 	knownRegionIds, err := fetchKnownIDS(conn, idcache.RegionID)
 	if err != nil {
@@ -86,9 +86,8 @@ func (dm *DBManager) GetCompletedDates() ([]time.Time, error) {
 }
 
 func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
-	// get exclusive access to the datecache
-	dm.idCacheMutex.Lock()
-	defer dm.idCacheMutex.Unlock()
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
 
 	dm.logger.Info(fmt.Sprintf("fetching id data for %s...", date.Date.Format(time.DateOnly)))
 
@@ -190,6 +189,7 @@ func (dm *DBManager) Start() {
 	for range dm.numWorkers {
 		go func() {
 			for marketDay := range dm.input {
+
 				// handle new ids first
 				err := dm.insertNewRegionAndTypeIds(marketDay)
 				if err != nil {
@@ -201,14 +201,10 @@ func (dm *DBManager) Start() {
 				// then insert the day's data
 				res, err := dm.InsertMarketDay(marketDay)
 				if err != nil {
-					dm.mutex.Lock()
 					errMsg := fmt.Sprintf("Failed to insert the data for %s: %s", marketDay.Date.Format(time.DateOnly), err)
 					dm.logger.Error(errMsg)
-					dm.mutex.Unlock()
 				} else {
-					dm.mutex.Lock()
 					dm.output <- res
-					dm.mutex.Unlock()
 				}
 			}
 		}()

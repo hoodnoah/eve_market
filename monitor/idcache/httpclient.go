@@ -5,26 +5,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/hoodnoah/eve_market/monitor/logger"
 	"github.com/hoodnoah/eve_market/monitor/ratelimiter"
 )
 
 type RateLimitedClient struct {
-	limiter ratelimiter.IRateLimiter
-	client  *http.Client
-	mutex   sync.Mutex
+	logger        logger.ILogger
+	limiter       ratelimiter.IRateLimiter
+	client        *http.Client
+	mutex         sync.Mutex
+	maxRetries    int
+	backoffFactor float64
 }
 
-func NewRateLimitedClient(requestsPerSecond int) IRequestClient {
+func NewRateLimitedClient(logger logger.ILogger, requestsPerSecond int, maxRetries int, backoffFactor float64) IRequestClient {
 	rl := ratelimiter.NewTokenBucketRateLimiter(requestsPerSecond)
 	rl.Start()
 
 	return &RateLimitedClient{
-		client:  &http.Client{},
-		limiter: rl,
-		mutex:   sync.Mutex{},
+		logger:        logger,
+		maxRetries:    maxRetries,
+		backoffFactor: backoffFactor,
+		client:        &http.Client{},
+		limiter:       rl,
+		mutex:         sync.Mutex{},
 	}
 }
 
@@ -33,35 +42,31 @@ func (ae *APIRequestError) Error() string {
 }
 
 func (rlc *RateLimitedClient) SubmitRequest(request *http.Request) (*http.Response, *APIRequestError) {
-	<-rlc.limiter.GetChannel()
+	var response *http.Response
+	var err error
 
-	response, err := rlc.client.Do(request)
+	for attempts := 1; attempts <= rlc.maxRetries; attempts++ {
+		<-rlc.limiter.GetChannel()
+		response, err = rlc.client.Do(request)
 
-	if err != nil {
-		return nil, &APIRequestError{
-			ErrorType: RequestFailedError,
-			Err:       err,
+		if err == nil || !isRetryableError(response) {
+			return response, handleAPIError(err, response)
 		}
-	}
 
-	// success
-	if response.StatusCode == http.StatusOK {
-		return response, nil
-	}
+		delay := time.Duration(math.Pow(rlc.backoffFactor, float64(attempts-1))) * time.Second
 
-	// failure from bad id value
-	if response.StatusCode == http.StatusNotFound {
-		return nil, &APIRequestError{
-			ErrorType: InvalidIDRequestError,
-			Err:       nil,
+		var requestErrMsg string
+		if response != nil {
+			requestErrMsg = fmt.Sprintf(" with response status: %s, ", response.Status)
+		} else {
+			requestErrMsg = ", "
 		}
+
+		rlc.logger.Warn(fmt.Sprintf("request failed%sretrying after %f seconds...", requestErrMsg, delay.Seconds()))
+		time.Sleep(delay)
 	}
 
-	// failure from any other reason
-	return nil, &APIRequestError{
-		ErrorType: RequestFailedError,
-		Err:       fmt.Errorf("request failed with status %s", response.Status),
-	}
+	return response, handleAPIError(err, response)
 }
 
 func (rlc *RateLimitedClient) FetchID(id int) (*ESITypeIDResponse, *APIRequestError) {
