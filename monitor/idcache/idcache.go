@@ -71,9 +71,7 @@ func (idc *IDCache) fetchAllIds(ids []int) ([]ESITypeIDResponse, *APIRequestErro
 
 	// base case 2: all ids resolve correctly, or error
 	// for a reason other than invalidIDRequestError
-	idc.logger.Debug(fmt.Sprintf("submitting request for %d ids...", len(ids)))
 	allIdsRes, allIdsErr := idc.client.FetchManyIDs(ids)
-	idc.logger.Debug(fmt.Sprintf("request completed."))
 	if allIdsErr == nil {
 		return allIdsRes, nil
 	}

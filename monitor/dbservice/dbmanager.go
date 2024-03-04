@@ -90,6 +90,8 @@ func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 	dm.idCacheMutex.Lock()
 	defer dm.idCacheMutex.Unlock()
 
+	dm.logger.Info(fmt.Sprintf("fetching id data for %s...", date.Date.Format(time.DateOnly)))
+
 	// enumerate all the day's ids
 	// using maps as sets to prevent duplication
 	regionIdsToLabel := []int{}
