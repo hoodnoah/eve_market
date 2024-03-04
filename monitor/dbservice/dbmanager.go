@@ -53,7 +53,7 @@ func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan
 		output:       outputChannel,
 		numWorkers:   numWorkers,
 		idCache:      idCache,
-		idCacheMutex: sync.Mutex{},
+		idCacheMutex: sync.RWMutex{},
 		mutex:        sync.Mutex{},
 	}, nil
 }
@@ -86,10 +86,9 @@ func (dm *DBManager) GetCompletedDates() ([]time.Time, error) {
 }
 
 func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
-	dm.mutex.Lock()
-	defer dm.mutex.Unlock()
-
-	dm.logger.Info(fmt.Sprintf("fetching id data for %s...", date.Date.Format(time.DateOnly)))
+	// lock the cache for writing, but allow reads
+	dm.idCacheMutex.RLock()
+	defer dm.idCacheMutex.RUnlock()
 
 	// enumerate all the day's ids
 	// using maps as sets to prevent duplication
@@ -123,6 +122,9 @@ func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 	}
 
 	// add them to the database
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
+
 	tx, err := dm.connection.Begin()
 	if err != nil {
 		return err
@@ -151,6 +153,9 @@ func (dm *DBManager) insertNewRegionAndTypeIds(date *parser.MarketDay) error {
 // tries to insert an entire market day's data
 // fails unless the entire day can be inserted at once
 func (dm *DBManager) InsertMarketDay(day *parser.MarketDay) (time.Time, error) {
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
+
 	tx, err := dm.connection.Begin()
 	if err != nil {
 		return time.Time{}, err

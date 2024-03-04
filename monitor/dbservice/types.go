@@ -26,7 +26,7 @@ type DBManager struct {
 	output       chan time.Time
 	numWorkers   uint
 	idCache      idcache.IIDcache
-	idCacheMutex sync.Mutex
+	idCacheMutex sync.RWMutex
 	mutex        sync.Mutex
 }
 

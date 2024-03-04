@@ -9,8 +9,8 @@ var marketDataTableTemplate = `
 		average DECIMAL(20, 2) NOT NULL,
 		highest DECIMAL(20, 2) NOT NULL,
 		lowest DECIMAL(20, 2) NOT NULL,
-		volume INTEGER UNSIGNED NOT NULL,
-		order_count INTEGER UNSIGNED NOT NULL,
+		volume BIGINT UNSIGNED NOT NULL,
+		order_count BIGINT UNSIGNED NOT NULL,
 
 		PRIMARY KEY(date_id, region_id, type_id),
 		FOREIGN KEY (date_id)
