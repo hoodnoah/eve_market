@@ -28,7 +28,39 @@ go.work
 
 # End of https://www.toptal.com/developers/gitignore/api/go
 
+### CSHARP ###
+# Build artifacts 
+bin/
+obj/
+
+# IDE Specific Files
+*.userprefs
+*.suo
+*.user
+*.sln.docstates
+
+# Logs and temporary files
+*.log
+*.tmp
+[Dd]ebug/ 
+[Rr]elease/ 
+
+# Dependency Management 
+**/packages/ 
+
+# Local Configuration (Contains Sensitive Information)
+appsettings.Development.json
+appsettings.json 
+!appsettings.template.json
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+
 ##### CUSTOM ####
 *.csv
 *.bz2
 .DS_Store
+
+
