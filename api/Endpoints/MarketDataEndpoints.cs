@@ -6,9 +6,9 @@ namespace Api.Endpoints
 {
   public class MarketDataEndpoints
   {
-    const int MAX_TYPES = 10;
-    const int MAX_REGIONS = 10;
-    const int MAX_DAYS = 90;
+    const int MAX_TYPES = 5;
+    const int MAX_REGIONS = 5;
+    const int PAGESIZE = 30;
     /// <summary>
     /// Maps the endpoints for the MarketData controller
     /// </summary>
@@ -23,7 +23,7 @@ namespace Api.Endpoints
       app.MapPost("/api/market-data/volume/annual", GetAnnualVolumeData).WithName("GetAnnualVolumeData").WithOpenApi();
     }
 
-    private static async Task<IResult> GetDailyPrices(MarketDb db, [FromBody] MarketDataFilter filter)
+    private static async Task<IResult> GetDailyPrices(MarketDb db, [FromBody] PaginatedMarketDataFilter filter)
     {
       if (!IsValidRegionsFilter(filter.Regions))
       {
@@ -35,11 +35,6 @@ namespace Api.Endpoints
         return Results.BadRequest($"Too many types selected; must be {MAX_TYPES} or fewer.");
       }
 
-      if (!IsValidDateFilter(filter.DateRange))
-      {
-        return Results.BadRequest($"Date range is too long for daily data; must be {MAX_DAYS} days or fewer.");
-      }
-
       var results =
         await
         db
@@ -47,6 +42,9 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
+        .Where(m => m.Date.Date < filter.BeforeDate)
+        .OrderByDescending(m => m.Date.Date)
+        .Take(PAGESIZE)
         .Select(m => new MarketDataDTO
         {
           Date = m.Date.Date,
@@ -159,16 +157,13 @@ namespace Api.Endpoints
 
       return Results.Ok(results);
     }
-    private static async Task<IResult> GetDailyVolumeData(MarketDb db, [FromBody] MarketDataFilter filter)
+    private static async Task<IResult> GetDailyVolumeData(MarketDb db, [FromBody] PaginatedMarketDataFilter filter)
     {
-      if (!IsValidDateFilter(filter.DateRange))
-      {
-        return Results.BadRequest($"Date range is too long for daily data; must be {MAX_DAYS} days or fewer.");
-      }
       if (!IsValidRegionsFilter(filter.Regions))
       {
         return Results.BadRequest($"Too many regions selected; must be {MAX_REGIONS} or fewer.");
       }
+
       if (!IsValidTypesFilter(filter.Types))
       {
         return Results.BadRequest($"Too many types selected; must be {MAX_TYPES} or fewer.");
@@ -181,6 +176,8 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
+        .Where(m => m.Date.Date < filter.BeforeDate)
+        .Take(PAGESIZE)
         .Select(m => new DailyVolumeDTO
         {
           Date = m.Date.Date,
@@ -294,11 +291,6 @@ namespace Api.Endpoints
     {
       return regions.Count <= MAX_REGIONS;
     }
-
-    private static bool IsValidDateFilter(DateRange dateRange)
-    {
-      return dateRange.EndDate.DayNumber - dateRange.StartDate.DayNumber <= MAX_DAYS;
-    }
   }
 
   public class MarketDataDTO
@@ -382,6 +374,11 @@ namespace Api.Endpoints
     public required List<int> Regions { get; set; } = new List<int>();
     public required List<int> Types { get; set; } = new List<int>();
 
+  }
+
+  public class PaginatedMarketDataFilter : MarketDataFilter
+  {
+    public required DateOnly BeforeDate { get; set; }
   }
 
   public class DateRange
