@@ -27,6 +27,13 @@ namespace Api.Models
         .HasOne(m => m.Type)
         .WithMany(t => t.MarketData)
         .HasForeignKey(m => m.TypeID);
+
+      // register cast from DateOnly -> DateTime, vice-versa
+      modelBuilder.Entity<CompletedDates>(builder =>
+      {
+        builder.Property(x => x.Date)
+          .HasConversion<Util.DateOnlyConverter>();
+      });
     }
   }
 }

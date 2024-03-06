@@ -8,16 +8,24 @@ namespace Api.Models
   [PrimaryKey(nameof(DateID), nameof(RegionID), nameof(TypeID))]
   public class MarketData
   {
-    public int DateID { get; set; }
+    [Column("date_id")]
+    public required int DateID { get; set; }
     public required CompletedDates Date { get; set; }
-    public int RegionID { get; set; }
+    [Column("region_id")]
+    public required int RegionID { get; set; }
     public required RegionId Region { get; set; }
-    public int TypeID { get; set; }
+    [Column("type_id")]
+    public required int TypeID { get; set; }
     public required TypeId Type { get; set; }
-    public double Average { get; set; }
-    public double Highest { get; set; }
-    public double Lowest { get; set; }
-    public long Volume { get; set; }
-    public long OrderCount { get; set; }
+    [Column("average")]
+    public required double Average { get; set; }
+    [Column("highest")]
+    public required double Highest { get; set; }
+    [Column("lowest")]
+    public required double Lowest { get; set; }
+    [Column("volume")]
+    public required long Volume { get; set; }
+    [Column("order_count")]
+    public required long OrderCount { get; set; }
   }
 }
