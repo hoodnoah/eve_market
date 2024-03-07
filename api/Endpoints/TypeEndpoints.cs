@@ -1,4 +1,5 @@
 using Api.Models;
+using Api.DTO;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Endpoints
@@ -18,14 +19,12 @@ namespace Api.Endpoints
         {
           Id = t.Id,
           Name = t.Value
-        }).ToListAsync();
-      return Results.Ok(types);
+        })
+        .ToListAsync();
+
+      return TypedResults.Ok(types);
     }
   }
 
-  public class TypeDTO
-  {
-    public required int Id { get; set; }
-    public required string Name { get; set; }
-  }
+
 }

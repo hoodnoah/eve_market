@@ -45,7 +45,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-Api.Endpoints.CompletedDates.MapEndpoints(app);
+Api.Endpoints.CompletedDatesEndpoints.MapEndpoints(app);
 Api.Endpoints.RegionEndpoints.MapEndpoints(app);
 Api.Endpoints.TypeEndpoints.MapEndpoints(app);
 Api.Endpoints.MarketDataEndpoints.MapEndpoints(app);

@@ -1,9 +1,10 @@
 using Api.Models;
+using Api.DTO;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Endpoints
 {
-  public class CompletedDates
+  public class CompletedDatesEndpoints
   {
     public static void MapEndpoints(WebApplication app)
     {
@@ -14,19 +15,12 @@ namespace Api.Endpoints
     {
       var completedDates = await db
         .CompletedDates
-        .Select(cd => new CompletedDatesDTO
-        {
-          Id = cd.Id,
-          Date = cd.Date
-        }).ToListAsync();
+        .Select(cd => new CompletedDatesDTO(cd)
+        ).ToListAsync();
 
-      return Results.Ok(completedDates);
+      return TypedResults.Ok(completedDates);
     }
   }
 
-  public class CompletedDatesDTO
-  {
-    public required int Id { get; set; }
-    public required DateOnly Date { get; set; }
-  }
+
 }

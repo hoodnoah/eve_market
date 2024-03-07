@@ -1,6 +1,8 @@
+using Api.DTO;
 using Api.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Util;
 
 namespace Api.Endpoints
 {
@@ -9,18 +11,23 @@ namespace Api.Endpoints
     const int MAX_TYPES = 5;
     const int MAX_REGIONS = 5;
     const int PAGESIZE = 30;
+
     /// <summary>
     /// Maps the endpoints for the MarketData controller
     /// </summary>
     /// <param name="app"></param>
     public static void MapEndpoints(WebApplication app)
     {
-      app.MapPost("/api/market-data/prices/daily", GetDailyPrices).WithName("GetDailyPrices").WithOpenApi();
-      app.MapPost("/api/market-data/prices/monthly", GetMonthlyPrices).WithName("GetMonthlyPrices").WithOpenApi();
-      app.MapPost("/api/market-data/prices/annual", GetAnnualPrices).WithName("GetAnnualPrices").WithOpenApi();
-      app.MapPost("/api/market-data/volume/daily", GetDailyVolumeData).WithName("GetDailyVolumeData").WithOpenApi();
-      app.MapPost("/api/market-data/volume/monthly", GetMonthlyVolumeData).WithName("GetMonthlyVolumeData").WithOpenApi();
-      app.MapPost("/api/market-data/volume/annual", GetAnnualVolumeData).WithName("GetAnnualVolumeData").WithOpenApi();
+      // register the whole /api/market-data endpoint for prices, volume
+      var prices = app.MapGroup("/api/market-data/prices");
+      var volume = app.MapGroup("/api/market-data/volume");
+
+      prices.MapPost("/daily", GetDailyPrices).WithName("GetDailyPrices").WithOpenApi();
+      prices.MapPost("/monthly", GetMonthlyPrices).WithName("GetMonthlyPrices").WithOpenApi();
+      prices.MapPost("/annual", GetAnnualPrices).WithName("GetAnnualPrices").WithOpenApi();
+      volume.MapPost("/daily", GetDailyVolumeData).WithName("GetDailyVolumeData").WithOpenApi();
+      volume.MapPost("/monthly", GetMonthlyVolumeData).WithName("GetMonthlyVolumeData").WithOpenApi();
+      volume.MapPost("/annual", GetAnnualVolumeData).WithName("GetAnnualVolumeData").WithOpenApi();
     }
 
     private static async Task<IResult> GetDailyPrices(MarketDb db, [FromBody] PaginatedMarketDataFilter filter)
@@ -45,7 +52,7 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date < filter.BeforeDate)
         .OrderByDescending(m => m.Date.Date)
         .Take(PAGESIZE)
-        .Select(m => new MarketDataDTO
+        .Select(m => new DailyPriceDTO
         {
           Date = m.Date.Date,
           Region = new RegionDTO
@@ -60,12 +67,11 @@ namespace Api.Endpoints
           },
           Average = m.Average,
           Highest = m.Highest,
-          Lowest = m.Lowest,
-          Volume = m.Volume,
-          OrderCount = m.OrderCount
-        }).ToListAsync();
+          Lowest = m.Lowest
+        })
+        .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
 
     private static async Task<IResult> GetMonthlyPrices(MarketDb db, [FromBody] MarketDataFilter filter)
@@ -87,32 +93,31 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
-        .GroupBy(m => new { m.Date.Date.Month, m.Date.Date.Year, m.RegionID, m.TypeID })
-        .Select(m => new MonthlyPriceDTO
+        .GroupBy(m => new MonthlyGroupKey { Month = m.Date.Date.Month, Year = m.Date.Date.Year, RegionID = m.RegionID, TypeID = m.TypeID })
+        .Select(g => new MonthlyPriceDTO
         {
           Month = new MonthDate
           {
-            Month = m.Key.Month,
-            Year = m.Key.Year
+            Month = g.First().Date.Date.Month,
+            Year = g.First().Date.Date.Year
           },
           Region = new RegionDTO
           {
-            Id = m.Key.RegionID,
-            Name = m.First().Region.Value
+            Id = g.First().RegionID,
+            Name = g.First().Region.Value
           },
           Type = new TypeDTO
           {
-            Id = m.Key.TypeID,
-            Name = m.First().Type.Value
+            Id = g.First().TypeID,
+            Name = g.First().Type.Value
           },
-          Average = m.Average(m => m.Average),
-          Highest = m.Max(m => m.Highest),
-          Lowest = m.Min(m => m.Lowest)
-
+          Average = g.Average(g => g.Average),
+          Highest = g.Max(g => g.Highest),
+          Lowest = g.Min(g => g.Lowest)
         })
         .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
 
     private static async Task<IResult> GetAnnualPrices(MarketDb db, [FromBody] MarketDataFilter filter)
@@ -134,29 +139,29 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
-        .GroupBy(m => new { m.Date.Date.Year, m.RegionID, m.TypeID })
-        .Select(m => new AnnualPriceDTO
+        .GroupBy(g => new AnnualGroupKey { Year = g.Date.Date.Year, RegionID = g.RegionID, TypeID = g.TypeID })
+        .Select(g => new AnnualPriceDTO
         {
-          Year = m.Key.Year,
+          Year = g.First().Date.Date.Year,
           Region = new RegionDTO
           {
-            Id = m.Key.RegionID,
-            Name = m.First().Region.Value
+            Id = g.First().RegionID,
+            Name = g.First().Region.Value
           },
           Type = new TypeDTO
           {
-            Id = m.Key.TypeID,
-            Name = m.First().Type.Value
+            Id = g.First().TypeID,
+            Name = g.First().Type.Value
           },
-          Average = m.Average(m => m.Average),
-          Highest = m.Max(m => m.Highest),
-          Lowest = m.Min(m => m.Lowest)
-
+          Average = g.Average(g => g.Average),
+          Highest = g.Max(g => g.Highest),
+          Lowest = g.Min(g => g.Lowest)
         })
         .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
+
     private static async Task<IResult> GetDailyVolumeData(MarketDb db, [FromBody] PaginatedMarketDataFilter filter)
     {
       if (!IsValidRegionsFilter(filter.Regions))
@@ -193,9 +198,10 @@ namespace Api.Endpoints
           },
           Volume = m.Volume,
           OrderCount = m.OrderCount
-        }).ToListAsync();
+        })
+        .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
 
     private static async Task<IResult> GetMonthlyVolumeData(MarketDb db, [FromBody] MarketDataFilter filter)
@@ -216,29 +222,30 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
-        .GroupBy(m => new { m.Date.Date.Month, m.Date.Date.Year, m.RegionID, m.TypeID })
-        .Select(m => new MonthlyVolumeDTO
+        .GroupBy(m => new MonthlyGroupKey { Month = m.Date.Date.Month, Year = m.Date.Date.Year, RegionID = m.RegionID, TypeID = m.TypeID })
+        .Select(g => new MonthlyVolumeDTO
         {
           Month = new MonthDate
           {
-            Month = m.Key.Month,
-            Year = m.Key.Year
+            Month = g.First().Date.Date.Month,
+            Year = g.First().Date.Date.Year
           },
           Region = new RegionDTO
           {
-            Id = m.Key.RegionID,
-            Name = m.First().Region.Value,
+            Id = g.First().RegionID,
+            Name = g.First().Region.Value
           },
           Type = new TypeDTO
           {
-            Id = m.Key.TypeID,
-            Name = m.First().Type.Value
+            Id = g.First().TypeID,
+            Name = g.First().Type.Value
           },
-          Volume = m.First().Volume,
-          OrderCount = m.First().OrderCount
-        }).ToListAsync();
+          Volume = g.Sum(g => g.Volume),
+          OrderCount = g.Sum(g => g.OrderCount)
+        })
+        .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
 
     private static async Task<IResult> GetAnnualVolumeData(MarketDb db, [FromBody] MarketDataFilter filter)
@@ -259,28 +266,27 @@ namespace Api.Endpoints
         .Where(m => m.Date.Date >= filter.DateRange.StartDate && m.Date.Date <= filter.DateRange.EndDate)
         .Where(m => filter.Regions.Contains(m.RegionID))
         .Where(m => filter.Types.Contains(m.TypeID))
-        .GroupBy(m => new { m.Date.Date.Year, m.RegionID, m.TypeID })
-        .Select(m => new AnnualVolumeDTO
+        .GroupBy(m => new AnnualGroupKey { Year = m.Date.Date.Year, RegionID = m.RegionID, TypeID = m.TypeID })
+        .Select(g => new AnnualVolumeDTO
         {
-          Year = m.Key.Year,
+          Year = g.First().Date.Date.Year,
           Region = new RegionDTO
           {
-            Id = m.Key.RegionID,
-            Name = m.First().Region.Value,
+            Id = g.First().RegionID,
+            Name = g.First().Region.Value
           },
           Type = new TypeDTO
           {
-            Id = m.Key.TypeID,
-            Name = m.First().Type.Value
+            Id = g.First().TypeID,
+            Name = g.First().Type.Value
           },
-          Volume = m.First().Volume,
-          OrderCount = m.First().OrderCount
-        }).ToListAsync();
+          Volume = g.Sum(g => g.Volume),
+          OrderCount = g.Sum(g => g.OrderCount)
+        })
+        .ToListAsync();
 
-      return Results.Ok(results);
+      return TypedResults.Ok(results);
     }
-
-
 
     private static bool IsValidTypesFilter(ICollection<int> types)
     {
@@ -293,87 +299,11 @@ namespace Api.Endpoints
     }
   }
 
-  public class MarketDataDTO
-  {
-    public required DateOnly Date { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required double Average { get; set; }
-    public required double Highest { get; set; }
-    public required double Lowest { get; set; }
-    public required long Volume { get; set; }
-    public required long OrderCount { get; set; }
-  }
-
-  public class DailyPriceDTO
-  {
-    public required DateOnly Date { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required double Average { get; set; }
-    public required double Highest { get; set; }
-    public required double Lowest { get; set; }
-  }
-
-  public class MonthlyPriceDTO
-  {
-    public required MonthDate Month { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required double Average { get; set; }
-    public required double Highest { get; set; }
-    public required double Lowest { get; set; }
-  }
-
-  public class AnnualPriceDTO
-  {
-    public required int Year { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required double Average { get; set; }
-    public required double Highest { get; set; }
-    public required double Lowest { get; set; }
-
-  }
-
-  public class DailyVolumeDTO
-  {
-    public required DateOnly Date { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required long Volume { get; set; }
-    public required long OrderCount { get; set; }
-  }
-
-  public class MonthlyVolumeDTO
-  {
-    public required MonthDate Month { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required long Volume { get; set; }
-    public required long OrderCount { get; set; }
-  }
-
-  public class AnnualVolumeDTO
-  {
-    public required int Year { get; set; }
-    public required RegionDTO Region { get; set; }
-    public required TypeDTO Type { get; set; }
-    public required long Volume { get; set; }
-    public required long OrderCount { get; set; }
-  }
-
-  public class MonthDate
-  {
-    public required int Month { get; set; }
-    public required int Year { get; set; }
-  }
   public class MarketDataFilter
   {
     public required DateRange DateRange { get; set; }
     public required List<int> Regions { get; set; } = new List<int>();
     public required List<int> Types { get; set; } = new List<int>();
-
   }
 
   public class PaginatedMarketDataFilter : MarketDataFilter
@@ -387,3 +317,4 @@ namespace Api.Endpoints
     public required DateOnly EndDate { get; set; }
   }
 }
+

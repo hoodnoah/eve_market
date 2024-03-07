@@ -1,4 +1,5 @@
 using Api.Models;
+using Api.DTO;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Endpoints
@@ -18,14 +19,10 @@ namespace Api.Endpoints
         {
           Id = r.Id,
           Name = r.Value
-        }).ToListAsync();
-      return Results.Ok(regions);
-    }
-  }
+        })
+        .ToListAsync();
 
-  public class RegionDTO
-  {
-    public required int Id { get; set; }
-    public required string Name { get; set; }
+      return TypedResults.Ok(regions);
+    }
   }
 }
