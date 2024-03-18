@@ -15,7 +15,6 @@ import (
 	"github.com/hoodnoah/eve_market/monitor/util"
 )
 
-// constructor for
 func NewDBManager(config *mysql.Config, logger logger.ILogger, inputChannel chan *parser.MarketDay, outputChannel chan time.Time, numWorkers uint) (*DBManager, error) {
 	if logger == nil {
 		panic("Could not initialize a new DBManager; logger must not be nil")
